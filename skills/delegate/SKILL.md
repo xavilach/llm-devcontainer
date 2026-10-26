@@ -113,6 +113,6 @@ A delegate's report is a claim, not evidence.
 ## Limits
 
 - Write mode isolates by working directory and branch, not by a sandbox. Codex runs with its own sandbox off, because the sandbox cannot start in this container. The container is the boundary, and Codex read roles run in a throwaway worktree that is discarded. Claude and Gemini rely on their own permission modes. Write briefs that name the scope.
-- Gemini needs headless authentication. If a Gemini role exits 5 with "must specify the GEMINI_API_KEY", run `gemini` interactively and log in, or provide an API key, then retry. Until then use a Claude or Codex role for the same job: `critique` becomes a fresh Claude Opus run, and `longctx` becomes a `search` split into parts.
+- Gemini needs headless authentication and a trusted folder. Put the key in `~/.gemini/.env` as `GEMINI_API_KEY`. `/workspace` is trusted; in an untrusted directory such as `/tmp` the key is not loaded and the role exits 5 with "must specify the GEMINI_API_KEY". The roles use `gemini-3-flash-preview`: the CLI default was overloaded (503), the 2.5 models returned 404, and the Pro models need a paid key. Retry later or change the model in the conf file if a call fails. Until then use a Claude or Codex role for the same job: `critique` becomes a fresh Claude Opus run, and `longctx` becomes a `search` split into parts.
 - Model names go stale. If a call fails on an unknown model, update the conf file or pass `--model`.
 - Delegates start with no memory of this session. Anything you do not put in the brief does not exist for them.

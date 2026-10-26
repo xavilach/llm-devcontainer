@@ -197,7 +197,7 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 | UI design | `ui-proposals` | Codex |
 | Writing | `docs`, `writeup` | Codex, Claude Haiku |
 
-Gemini roles (`critique`, `longctx`) need headless Gemini authentication: run `gemini` once and log in, or provide `GEMINI_API_KEY`. Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it.
+Gemini roles (`critique`, `longctx`) use `gemini-3-flash-preview` and need `GEMINI_API_KEY` in `~/.gemini/.env`. Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it.
 
 ### How the skills are installed
 
