@@ -41,7 +41,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iptables ipset dnsutils iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
-# 10 — Root-owned helper scripts and the outbound domain allowlist.
+# 10 — bubblewrap (bwrap): unprivileged sandbox that Codex, and optionally Claude Code, use to confine
+# the commands they run. It needs user namespaces, which the seccomp profile in devcontainer.json allows.
+RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap \
+    && rm -rf /var/lib/apt/lists/*
+
+# 11 — Root-owned helper scripts and the outbound domain allowlist.
 # install-skills.sh and init-workspace.sh run as `node` (not via sudo) on each start: the first installs
 # the skills copied below, the second keeps .scratch/ out of git. delegate.sh is the delegation helper.
 # Edit images/allowed-domains.txt to permit more destinations, then rebuild.
@@ -56,7 +61,7 @@ RUN chmod 0755 /usr/local/bin/init-firewall.sh /usr/local/bin/fix-volume-perms.s
     && chmod 0644 /etc/firewall-allowed-domains.txt /etc/delegate-roles.conf \
     && chmod -R a+rX /usr/local/share/agent-skills
 
-# 11 — Restricted sudo: `node` may run ONLY these two root-owned scripts, without a password.
+# 12 — Restricted sudo: `node` may run ONLY these two root-owned scripts, without a password.
 # There is no general root access, so an agent cannot lift the firewall or edit system files.
 # Need a new system package? Add it to the Dockerfile and rebuild.
 RUN printf '%s\n' \
@@ -64,7 +69,7 @@ RUN printf '%s\n' \
     > /etc/sudoers.d/node \
     && chmod 0440 /etc/sudoers.d/node
 
-# 12 — Persistent CLI locations (matched by mounts in devcontainer.json).
+# 13 — Persistent CLI locations (matched by mounts in devcontainer.json).
 # This is the single source for these variables; devcontainer.json does not repeat them.
 ENV CLAUDE_CONFIG_DIR=/home/node/.claude \
     CODEX_HOME=/home/node/.codex \
@@ -72,7 +77,7 @@ ENV CLAUDE_CONFIG_DIR=/home/node/.claude \
     GIT_CONFIG_GLOBAL=/home/node/.config/git/config \
     HISTFILE=/commandhistory/.bash_history
 
-# 13 — Prepare directories; named volume mounts may hide these at runtime.
+# 14 — Prepare directories; named volume mounts may hide these at runtime.
 # /commandhistory holds persistent Bash history (volume mounted in devcontainer.json).
 RUN mkdir -p /home/node/.claude /home/node/.codex /home/node/.gemini \
     /home/node/.config/gh /home/node/.config/git \
@@ -82,7 +87,7 @@ RUN mkdir -p /home/node/.claude /home/node/.codex /home/node/.gemini \
        /home/node/.gemini /home/node/.config /home/node/.vscode-server \
        /commandhistory /workspace
 
-# 14 — Opt-in modern interactive command aliases (never affect scripts).
+# 15 — Opt-in modern interactive command aliases (never affect scripts).
 # Use `command grep`, `command find`, and `command cat` to bypass aliases.
 # Also append history after each command so concurrent shells do not lose entries.
 RUN printf '%s\n' \
@@ -104,19 +109,19 @@ ARG CLAUDE_CODE_VERSION=latest
 ARG CODEX_VERSION=latest
 ARG GEMINI_CLI_VERSION=latest
 
-# 15 — Claude Code CLI (npm download cache kept across builds).
+# 16 — Claude Code CLI (npm download cache kept across builds).
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# 16 — OpenAI Codex CLI.
+# 17 — OpenAI Codex CLI.
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global @openai/codex@${CODEX_VERSION}
 
-# 17 — Google Gemini CLI.
+# 18 — Google Gemini CLI.
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global @google/gemini-cli@${GEMINI_CLI_VERSION}
 
-# 18 — Drop privileges and set the working directory.
+# 19 — Drop privileges and set the working directory.
 USER node
 WORKDIR /workspace
 CMD ["sleep", "infinity"]

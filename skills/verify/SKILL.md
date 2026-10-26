@@ -5,7 +5,7 @@ description: "Phase 5 of engineering-flow. Prove the change works against the re
 
 # Verify
 
-**Input:** the built change, `spec.md` and the ticket list.
+**Input:** the built change, `spec.md` and the ticket list (Trivial and small work: the goal and check you stated), and the base commit from `STATUS.md`.
 **Output:** `.scratch/<feature-slug>/verify.md` (traceability matrix, what you ran, review reports), `evidence/` (script output, logs, screenshots), `STATUS.md`.
 **Gate:** evidence is recorded, "act on" findings are fixed, and you can state what was verified and what was not.
 
@@ -21,18 +21,18 @@ Check the real thing, not a proxy. Run the feature, read the actual value, inspe
 
 ## 1b. Trace the requirements
 
-Build a matrix in `verify.md` with one row per requirement ID from the spec: the ticket that covers it, the test or check that proves it, and the evidence file. A requirement with no proof is a finding. Save the evidence under `evidence/` and link it.
+Build a matrix in `verify.md` with one row per requirement ID from the spec (work without requirement IDs gets one row per acceptance criterion or stated goal): the ticket that covers it, the test or check that proves it, and the evidence file. A requirement with no proof is a finding. Save the evidence under `evidence/` and link it.
 
 For a UI feature, also check these.
 
-- Contract tests pass on both sides against the same `contract.md`.
-- Every journey in the spec runs end to end through the real UI, including its failure and empty paths. Save screenshots or a script log.
+- Contract tests pass on both sides against the same contract (`docs/project/contracts/<feature-slug>.md`).
+- Every journey cited in the spec runs end to end through the real UI, including its failure and empty paths. Save screenshots or a script log.
 - Every screen state in `ui.md` was seen at least once.
 - Basic accessibility holds: keyboard use, labels, focus order, contrast.
 
 ## 2. Review on two axes
 
-Pin a fixed point (a commit, a branch or `main`) and take the diff `git diff <fixed-point>...HEAD`. Review each axis separately, ideally in two subagents with fresh context so neither colors the other. If you cannot spawn subagents, review them one after the other.
+Use the base commit recorded in `STATUS.md` as the fixed point (or a commit, branch or `main` if none is recorded) and take the diff `git diff <fixed-point>...HEAD`. Review each axis separately, ideally in two subagents with fresh context so neither colors the other. If you cannot spawn subagents, review them one after the other.
 
 **Spec.** Does the diff do what `spec.md` and the ticket ask? Report requirements that are missing or partial, behavior nobody asked for, and requirements that look done but are implemented wrong. Quote the spec line for each finding.
 
@@ -56,7 +56,7 @@ Report the two axes under separate headings and do not merge or rerank them. A c
 
 Use this for large, security-sensitive, irreversible or hard-to-test changes. A different model catches different bugs, and findings that two models raise independently are the strongest signal.
 
-Use the `delegate` skill with a role from a vendor other than the one that wrote the code: `review` (Codex) for the diff, or `critique` (Gemini) for the spec and design. Write a brief with the intent, the diff command and the spec path, for example `delegate.sh review .scratch/briefs/review.md`. Ask it to review adversarially and not to edit anything. If a CLI is unavailable, fall back to a fresh-context subagent. Then act as the lead reviewer and sort every finding into one bucket with a one-line reason.
+Use the `delegate` skill with a role from a vendor other than the one that wrote the code: `review` (Codex) for the diff, or `critique` (Gemini) for the spec and design. Save the diff (`git diff <base commit>...HEAD > .scratch/<feature-slug>/evidence/review.diff`) and pass it with the spec: `delegate.sh review .scratch/briefs/review.md --input .scratch/<feature-slug>/evidence/review.diff --input .scratch/<feature-slug>/spec.md`. Write a brief with the intent and those paths. The `--input` flags are needed because `.scratch/` is git-ignored. A Codex read role works on a copy of the project as it is now, uncommitted changes included, but it has no spec or diff unless you pass them. Ask it to review adversarially and not to edit anything. If a CLI is unavailable, fall back to a fresh-context subagent. Then act as the lead reviewer and sort every finding into one bucket with a one-line reason.
 
 - **Act on.** Real defects in correctness, security or maintainability. These would block a PR.
 - **Consider.** Legitimate, but the cost may outweigh the benefit now. Put it to the user.

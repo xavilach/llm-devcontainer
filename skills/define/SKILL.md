@@ -38,13 +38,13 @@ If the project has a UI, also settle these in the same rounds, not later:
 - `docs/project/project.md`: purpose, users, scope, non-goals, constraints, quality targets, success measures, risks.
 - `docs/project/requirements.md`: one list with IDs (`REQ-001`). Each line has a layer tag (`ui`, `api`, `data`, `ops`, `cross`), a priority, and a testable statement. A UI need and the backend need it implies are written together and cross-referenced.
 - `docs/project/journeys.md` (UI projects): each journey as numbered steps, with the screen, the data it needs, and the failure paths.
-- `docs/project/roadmap.md`: the features in order, each with a slug, the requirement IDs it covers and its dependencies. Each feature then goes through `align`.
+- `docs/project/roadmap.md` (optional for a small project): the features in order, each with a slug, the requirement IDs it covers and its dependencies. Each feature then goes through `align`.
 - `GLOSSARY.md`: every domain term used above, one definition each, and the words to avoid.
 - `docs/adr/NNNN-<title>.md`: one short ADR per structural decision, such as stack, repo layout, API style, state management, auth approach. State the context, the decision and the consequences.
 - `docs/project/decisions.md`: every question from the interview with the answer given.
 
 ## 4. Check for clashes
 
-For a UI project, walk every journey step against the requirements. Each step needs the requirements that make it possible, on both sides. Each backend requirement should be needed by some journey. Fix clashes now, because this is the cheapest moment.
+For a UI project, walk every journey step against the requirements. Each step needs the requirements that make it possible, on both sides. Every requirement traces to a journey, a system responsibility (a job, an integration, retention, an audit need) or an external consumer. A backend requirement does not need a screen. Fix clashes now, because this is the cheapest moment.
 
 Update `STATUS.md` if a feature directory exists.

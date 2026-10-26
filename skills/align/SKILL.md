@@ -6,7 +6,7 @@ description: "Phase 1 of engineering-flow. Interview the user until the goal, sc
 # Align
 
 **Input:** a feature from `docs/project/roadmap.md`, or the user's request.
-**Output:** `.scratch/<feature-slug>/spec.md`, `decisions.md`, `STATUS.md`; new requirement IDs in `docs/project/requirements.md`; new terms in `GLOSSARY.md`.
+**Output:** `.scratch/<feature-slug>/spec.md`, `decisions.md`, `STATUS.md`; new or updated journeys in `docs/project/journeys.md` (UI features); new requirement IDs in `docs/project/requirements.md`; new terms in `GLOSSARY.md`.
 **Gate:** the user approved the spec and the test seams, every story cites requirement IDs, `decisions.md` is complete, and no open question remains.
 
 Settle what to build and why before any design or code. For a new project or a first UI feature, run `define` first.
@@ -24,7 +24,8 @@ Treat the plan as a tree of decisions where each decision unlocks the ones below
 - Look up facts yourself. Read the code, the docs and the history, and use a subagent for wide searches. Ask the user only about decisions, never about facts you can find.
 - Write each question and its answer to `decisions.md` as you go, with an ID (`D-001`), the decision and the reason. Never rely on the chat as the record.
 - For a feature with a UI, the same rounds cover both sides. Ask about the screens, states (loading, empty, error, partial) and copy alongside the data, validation and permissions behind them. Do not finish one side first.
-- The interview ends when the frontier is empty and nothing is silently assumed. Do not act on it until the user confirms the shared understanding.
+- Reversible questions you can answer well do not need a round: assume the answer, write it to `decisions.md` as an assumption, and move on. Ask about irreversible, outward-facing and scope-changing decisions.
+- The interview ends when the frontier is empty and every assumption is written down. Do not act on it until the user confirms the shared understanding.
 
 Format for each question:
 
@@ -63,6 +64,12 @@ Modules touched, interfaces changed, schema or API contracts, architectural choi
 ## Testing
 The agreed seams, what a good test looks like here, similar tests already in the repo.
 
+## Journeys (UI features)
+The journeys this feature adds or changes, by heading in `docs/project/journeys.md`, with their failure and empty paths.
+
+## Acceptance
+A checklist of observable conditions that mean the feature is done. On the Medium path, `build` turns this list into ticket `01`.
+
 ## Out of scope
 What this will not do.
 
@@ -72,4 +79,4 @@ Anything still unresolved. Empty when the gate is met.
 
 ## 5. Record
 
-Promote any decision that outlives the feature to an ADR in `docs/adr/`. Add new terms to `GLOSSARY.md`. Update `STATUS.md` with the gate result and the list of outputs.
+For a UI feature, add or update the journeys in `docs/project/journeys.md` and cite them in the spec, so `design` and `verify` have them. Promote any decision that outlives the feature to an ADR in `docs/adr/`. Add new terms to `GLOSSARY.md`. Update `STATUS.md` with the gate result and the list of outputs.

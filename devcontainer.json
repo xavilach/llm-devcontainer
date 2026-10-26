@@ -9,7 +9,13 @@
       "GEMINI_CLI_VERSION": "latest"
     }
   },
-  "runArgs": ["--init", "--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+  "runArgs": [
+    "--init",
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
+    "--security-opt",
+    "seccomp=${localWorkspaceFolder}/.devcontainer/seccomp-userns.json"
+  ],
   "updateRemoteUserUID": true,
   "remoteUser": "node",
   "containerUser": "node",

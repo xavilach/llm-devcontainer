@@ -5,9 +5,9 @@ description: "Phase 4 of engineering-flow. Implement one ticket test-first at th
 
 # Build
 
-**Input:** one ticket (or the whole ticket graph), `spec.md`, `design.md`, `contract.md`.
+**Input:** one ticket or the whole ticket graph; `spec.md` and `design.md` when they exist; for UI work the contract at `docs/project/contracts/<feature-slug>.md`. Paths that skip `slice` have no ticket, see "No ticket" below.
 **Output:** commits, the ticket's `## Notes` and `Status`, `changes.md` for any deviation, `STATUS.md`. In graph mode also an integration branch and `orchestration.md`.
-**Gate:** every acceptance criterion holds, the full suite is green, the work is committed.
+**Gate:** every acceptance criterion holds, the full suite is green, and the work is committed if commits are authorized (`Commits:` in `STATUS.md`).
 
 Choose a mode.
 
@@ -16,11 +16,15 @@ Choose a mode.
 
 ## One ticket
 
+### No ticket
+
+Trivial and small work has no spec or ticket. State the goal, the check that proves it (a failing test or a command), and the test seam in one short message, then use the loop below. Medium work has a `spec.md` but skipped `slice`: create `issues/01-<slug>.md` from its Acceptance list, with `Covers:` filled in, and treat it as the ticket.
+
 ### Setup
 
 1. Pick the next ticket on the frontier, meaning one whose blockers are all `resolved`. Read the ticket, `spec.md` and `design.md`. State the ticket title before starting.
 2. Set `Status: claimed` in the ticket file.
-3. For UI projects, build against `contract.md`, using stubs or mocks for the other side until it lands. Do not change the contract inside a ticket.
+3. For UI projects, build against the contract, using stubs or mocks for the other side until it lands. Do not change the contract inside a ticket.
 4. Confirm the test seams from `spec.md`. If a ticket needs a seam that was not agreed, ask before writing the test.
 
 ### The loop
@@ -41,7 +45,7 @@ Check each unit before starting the next. A break caught at the unit that caused
 ### Finish
 
 1. Confirm every acceptance criterion holds and the suite is green.
-2. Commit on the current branch with a message that names the ticket.
+2. If `STATUS.md` says `Commits: allowed`, commit on the current branch with a message that names the ticket. If it records nothing, ask once and write the answer there. Without a yes, leave the changes in the working tree and say so.
 3. Append to the ticket's `## Notes`: what you did, decisions made, surprises, commit hashes. Set `Status: resolved`.
 4. If building contradicts the spec, design or contract, stop. Agree the change with the user, update that document, and record it in `.scratch/<feature-slug>/changes.md` with the date, what changed and why. If the contract changed, update the tickets on both sides.
 5. If context is filling up, run `handoff`. Then run `verify`.
@@ -53,11 +57,12 @@ You do not write the code in this mode. You schedule tickets, brief implementers
 ### 1. Plan the run
 
 1. Build the task graph from the tickets' `Blocked by:` lines. The frontier is every ticket whose blockers are all `resolved` and which is not `claimed`.
-2. Find the check for each ticket, meaning the command that proves its acceptance criteria, from `AGENTS.md`, `CLAUDE.md` or the manifest files. A ticket with no check gets one written first, or it runs alone and you review it by hand.
-3. Mark tickets that touch the same module or file (from the ticket scope and `design.md`) as conflicting. They never run at the same time.
-4. Set a concurrency limit, three by default. Lower it on rate limits or a flaky CLI.
-5. With a clean working tree, create the integration branch and check it out in the main working tree: `git switch -c integration/<feature-slug>`. Implementers branch from its tip, so each starts from the latest merged work.
-6. Create `orchestration.md` with a table of ticket, status, delegate id, model, branch, check, merge commit and retries.
+2. Find the commands, from `AGENTS.md`, `CLAUDE.md` or the manifest files: the setup command (installing dependencies), the typecheck command, the test command, and for each ticket the check that proves its acceptance criteria. A ticket with no check gets one written first, or it runs alone and you review it by hand. A fresh worktree has no installed dependencies, so the setup command is passed to every delegate.
+3. Mark tickets whose `Touches:` lines share a module as conflicting. They never run at the same time. A ticket with no `Touches:` line conflicts with everything.
+4. Set a concurrency limit, three by default. Lower it on rate limits or a flaky CLI. Set a launch budget of three delegate launches per ticket and record it in `orchestration.md`. When it is spent, stop launching and report.
+5. Whole-graph mode makes commits, so `STATUS.md` must say `Commits: allowed`. Ask once if it does not.
+6. With a clean working tree (implementers branch from the committed tip, so uncommitted changes are invisible to them), create the integration branch and check it out in the main working tree: `git switch -c integration/<feature-slug>`. Implementers branch from its tip, so each starts from the latest merged work.
+7. Create `orchestration.md` with a table of ticket, status, delegate id, model, branch, check, merge commit and retries.
 
 Show the user the plan before starting: the order, what runs in parallel, and the model for each ticket.
 
@@ -66,26 +71,31 @@ Show the user the plan before starting: the order, what runs in parallel, and th
 For each ready ticket within the limit:
 
 1. Set `Status: claimed` in the ticket and in `orchestration.md`.
-2. Write a short brief of pointers, not copies: the paths of the spec, design, contract, the ticket, `GLOSSARY.md` and earlier commits it builds on. State the goal, the scope, what is out of bounds, the done condition, and that the implementer follows the loop above, commits, and appends to the ticket's `## Notes`.
+2. Write a short brief of pointers, not copies: the paths of the spec, design, contract, the ticket and `GLOSSARY.md`. State the goal, the scope, what is out of bounds, the done condition, and that the implementer follows the loop above. Tell it not to commit and not to edit the ticket file: the wrapper commits, and its final message is the ticket note. The orchestrator is the only writer of tickets, `orchestration.md` and `STATUS.md`, so parallel delegates cannot collide.
 3. Launch it in the background:
 
    ```
-   delegate.sh implement <brief> --tag <ticket-id> --check "<check>" --allow "Bash(<test command>:*)"
+   delegate.sh implement <brief> --tag <ticket-id> --setup "<setup command>" \
+     --input .scratch/<feature-slug>/spec.md --input .scratch/<feature-slug>/design.md \
+     --input .scratch/<feature-slug>/issues/<NN>-<slug>.md --input docs/project/contracts/<feature-slug>.md \
+     --scope <path of each module in Touches:> \
+     --allow "Bash(<test command>:*)" --allow "Bash(<typecheck command>:*)" \
+     --check "<check>" --budget <usd>
    ```
 
-   Use `--model` to put a hard ticket on a stronger model. UI work runs against `contract.md`, with stubs for the other side until it lands.
+   The `--input` flags matter: `.scratch/` is git-ignored, so the delegate's worktree does not have those files unless they are copied in, and they arrive read-only. Use `--model` to put a hard ticket on a stronger model. UI work runs against the contract, with stubs for the other side until it lands.
 4. When a delegate finishes, handle it as below, then refill the frontier.
 
 ### 3. Check and merge each result
 
 A delegate's report is a claim. Check the work before it reaches the integration branch.
 
-1. Read the exit status. Exit 4 means its check failed, and 5 means the CLI failed or timed out.
-2. Read the diff of its branch against the integration branch. It must stay inside the ticket scope, match `design.md`, and leave no stray files such as caches or build output. It must not edit `contract.md` or the spec. A contract change stops the run: tell the user, agree the change, update the documents, and re-brief the affected tickets.
+1. Read the exit status. Exit 4 means its check failed, 5 the CLI failed or timed out, 7 it changed files outside `--scope`, 8 setup failed, 9 the wrapper commit failed.
+2. Read `changed-files.txt` and the diff of its branch against the integration branch. It must stay inside the ticket scope, match `design.md`, and leave no stray files such as caches or build output. It must not edit the contract or the spec. A contract change stops the run: tell the user, agree the change, update the documents, and re-brief the affected tickets.
 3. Run the ticket's check yourself in its worktree.
 4. Merge with `git merge --no-ff delegate/<id>` on the integration branch. Resolve a trivial conflict yourself. For a real conflict, discard the merge and run the ticket again on the new tip.
 5. Run the full suite and typecheck on the integration branch. If red, find the cause from the failure log, revert the merge if needed, and re-brief the ticket with the log. After two failed attempts, set the ticket to `needs-info`, write the reason in its notes, and continue with tickets that do not depend on it.
-6. Set `Status: resolved`, record the merge commit and delegate id in the ticket notes, update `orchestration.md` and the graph in `issues/README.md`, and recompute the frontier.
+6. Set `Status: resolved`. Write the delegate's `result.md` into the ticket's `## Notes` yourself, with the merge commit and delegate id, update `orchestration.md` and the graph in `issues/README.md`, and recompute the frontier.
 
 If a design assumption proves wrong while merging, record it in `changes.md`, stop launching tickets that depend on it, and tell the user.
 

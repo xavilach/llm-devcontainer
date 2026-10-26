@@ -76,11 +76,11 @@ Rules of thumb:
 
 ## 3. Write the brief
 
-The delegate sees only the brief and the repo. Make it standalone, in a file under `.scratch/`, such as `.scratch/briefs/<name>.md`. Never use `/tmp`, which is lost on restart.
+The delegate sees only the brief and the files it is given. Make it standalone, in a file under `.scratch/`, such as `.scratch/briefs/<name>.md`. Never use `/tmp`, which is lost on restart. Name the input files in the brief with the same relative paths you pass to `--input`.
 
 ```
 Goal: <one sentence>
-Context: <what it needs to know, with paths to the spec, design and ticket>
+Context: <what it needs to know, with paths to the spec, design, contract and ticket>
 Scope: <files or directories it may read or change>
 Do not: <what is out of bounds>
 Done when: <observable condition>
@@ -90,14 +90,25 @@ Output: <the shape of the final message, for example a list of file:line with on
 ## 4. Run it
 
 ```
-delegate.sh <role> .scratch/briefs/<name>.md [--check "<command>"] [--allow "<tool>"]... [--tag <name>] [--model <id>] [--timeout <seconds>]
+delegate.sh <role> .scratch/briefs/<name>.md [options]
 ```
 
-- Run it from inside the git repo. Output goes to `.scratch/delegations/<id>/`: the brief, `result.md`, logs, and for write roles a worktree on the branch `delegate/<id>`.
-- `--check` runs a command in the worktree after the delegate finishes. The script exits 4 if it fails.
-- `--tag` adds a name, such as a ticket ID, to the run ID so parallel runs are easy to tell apart. Parallel runs are safe because each has its own worktree and branch. `build` uses this in whole-graph mode.
-- `--allow` gives a Claude delegate a tool it would otherwise be denied, because headless runs cannot ask. A write delegate that must run tests needs one, for example `--allow "Bash(npm test:*)"`. Allow the narrowest command that works. Codex runs commands in its own sandbox. Gemini needs no flag for edits but cannot run shell commands unprompted.
-- Exit 3 means that CLI is not installed, and 5 means it failed or timed out. In both cases do the task yourself or retry. Do not block on a delegate.
+| Option | Meaning |
+| --- | --- |
+| `--input <path>` | Copy a file or directory into the delegate's working tree at the same relative path (repeatable). **Required for anything under `.scratch/`**, which git ignores and a worktree therefore does not contain. Copies are read-only. |
+| `--setup "<cmd>"` | Run in the working tree before the CLI starts, for example `npm ci`. A fresh worktree has no installed dependencies. Files setup creates are kept out of the delegate's commit. |
+| `--check "<cmd>"` | Run in the working tree afterwards. Exit 4 if it fails. |
+| `--allow "<tool>"` | Extra tool for a Claude delegate (repeatable), for example `"Bash(npm test:*)"`. Headless runs cannot ask, so anything not allowed is denied. Allow the narrowest command that works. |
+| `--scope <pathspec>` | A write role may only change matching paths (repeatable). Exit 7 if it touches others. |
+| `--tag <name>` | Name added to the run ID, such as a ticket ID. Parallel runs are safe: each has its own worktree and branch. |
+| `--model <id>` | Override the model in the roles file. |
+| `--budget <usd>` | Spend cap for a Claude delegate. |
+| `--timeout <s>`, `--check-timeout <s>` | Time limit for the CLI (default 900, killed 30 s later) and for setup and check (default 600). |
+
+- Run it from inside the git repo. Output goes to `.scratch/delegations/<id>/`: the brief, `result.md`, logs, `changed-files.txt`, and for write roles a worktree on the branch `delegate/<id>`.
+- A write role works from the committed `HEAD`. Uncommitted changes in your working tree are not in its worktree. A Codex read role works on a copy of the project as it is now, including uncommitted and untracked files.
+- The wrapper commits a write role's result on the delegate branch, without running project hooks. It does not commit files created by `--setup`. Tell the delegate not to commit.
+- Exit codes: 3 the CLI is not installed, 4 check failed, 5 the CLI failed or timed out, 6 a write role changed no files, 7 changes outside `--scope`, 8 setup failed, 9 commit failed. On 3 or 5 do the task yourself or retry. Do not block on a delegate.
 
 ## 5. Review before using
 
@@ -112,7 +123,10 @@ A delegate's report is a claim, not evidence.
 
 ## Limits
 
-- Write mode isolates by working directory and branch, not by a sandbox. Codex runs with its own sandbox off, because the sandbox cannot start in this container. The container is the boundary, and Codex read roles run in a throwaway worktree that is discarded. Claude and Gemini rely on their own permission modes. Write briefs that name the scope.
+- **Codex runs in its bubblewrap sandbox when the container allows it.** The script probes for it and prints `codex sandbox=<mode>`. Write roles get `workspace-write` (writes only in their worktree) and read roles get `read-only`, and both run with a scrubbed environment (no `GH_*`, no git credential helper, no other CLI's config) and a throwaway `CODEX_HOME` that holds only the Codex login. If the probe fails, the script warns and falls back to `danger-full-access`: then Codex can read and write any path the `node` user can, including the workspace and the config volumes, so treat it like a script you run yourself and use `--scope` and a diff review.
+- The Codex sandbox needs the project under `/workspace`. Inside it, bubblewrap mounts a fresh tmpfs over `/tmp`, which hides Codex's helper binary when the repo, and so its delegation directory, lives under `/tmp`. Codex then fails with "execvp codex-linux-sandbox: No such file". Keep projects in `/workspace`.
+- Claude and Gemini rely on their own permission modes. Claude write roles can only use the tools in `--allow` plus editing; Gemini write roles auto-approve edits.
+- Write roles isolate by working directory and branch. That is a convenience for merging, not a security boundary.
 - Gemini needs headless authentication and a trusted folder. Put the key in `~/.gemini/.env` as `GEMINI_API_KEY`. `/workspace` is trusted; in an untrusted directory such as `/tmp` the key is not loaded and the role exits 5 with "must specify the GEMINI_API_KEY". The roles use `gemini-3-flash-preview`: the CLI default was overloaded (503), the 2.5 models returned 404, and the Pro models need a paid key. Retry later or change the model in the conf file if a call fails. Until then use a Claude or Codex role for the same job: `critique` becomes a fresh Claude Opus run, and `longctx` becomes a `search` split into parts.
 - Model names go stale. If a call fails on an unknown model, update the conf file or pass `--model`.
 - Delegates start with no memory of this session. Anything you do not put in the brief does not exist for them.

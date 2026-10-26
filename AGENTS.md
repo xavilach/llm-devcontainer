@@ -7,6 +7,7 @@ This repository is a **shared devcontainer, consumed as the `.devcontainer` Git 
 | Path | Role |
 | --- | --- |
 | `devcontainer.json` | Container config: build args, mounts, caps, VS Code settings, lifecycle commands. Must stay at the repo root (the submodule root *is* the `.devcontainer` folder). |
+| `seccomp-userns.json` | Docker's default seccomp profile (moby v28.0.0) plus eight syscalls, so bubblewrap can create namespaces without any added capability. Passed through `runArgs`. See the Security model. |
 | `images/Dockerfile` | The image. Numbered, commented, one-concern-per-step layers. |
 | `images/init-firewall.sh` | Default-deny outbound firewall, run as root on every start. |
 | `images/allowed-domains.txt` | Hostnames the firewall permits. Copied into the image as `/etc/firewall-allowed-domains.txt`. |
@@ -32,7 +33,8 @@ This repository is a **shared devcontainer, consumed as the `.devcontainer` Git 
 
 - **Restricted sudo.** `node` may run only `init-firewall.sh` and `fix-volume-perms.sh` via `/etc/sudoers.d/node`. Never restore `NOPASSWD:ALL`, never add a script that accepts arbitrary arguments or commands, and keep sudo-able scripts root-owned and not writable by `node`.
 - **Default-deny firewall.** Outbound traffic is limited to DNS, loopback, the Docker host `/24`, GitHub ranges and `allowed-domains.txt`. IPv6 is blocked. To permit a destination, add a hostname to `allowed-domains.txt` (with a section comment) and rebuild. Do not add a catch-all rule, disable the verification at the end of the script, or widen the host network match.
-- **Codex delegates.** Codex's own sandbox cannot start here (no user namespaces), so `delegate.sh` runs it with `--sandbox danger-full-access`. The container is the boundary. Do not loosen seccomp or add capabilities to make the Codex sandbox work.
+- **Seccomp profile.** `seccomp-userns.json` is Docker's default profile with one change: `clone` (without the namespace-flag filter), `unshare`, `setns`, `mount`, `umount`, `umount2`, `pivot_root` and `sethostname` are allowed without `CAP_SYS_ADMIN`. This lets bubblewrap sandbox Codex, at the cost of a wider kernel attack surface (user namespaces) inside the container. No capability is added. To regenerate it, take `profiles/seccomp/default.json` from moby, remove `clone` from the two argument-restricted rules, and append one `SCMP_ACT_ALLOW` rule for those eight names. Never use `seccomp=unconfined`, and do not add syscalls beyond what bubblewrap needs without the owner's approval.
+- **Codex delegates.** `delegate.sh` runs Codex inside its bubblewrap sandbox (`workspace-write` for write roles, `read-only` for read roles) when the probe `bwrap --ro-bind / / --unshare-user --unshare-pid true` succeeds. If it does not, for example on a host that ignores the profile, Codex falls back to `--sandbox danger-full-access` with a printed warning, and the container is the only boundary. Both modes use a scrubbed environment (no `GH_*`, no git credential helper, a throwaway `CODEX_HOME` with only the Codex login). Do not describe the fallback as isolated.
 - **Capabilities.** `NET_ADMIN` and `NET_RAW` exist only so the firewall script can run. Do not add other capabilities or `--privileged`.
 - **No host credential mounts.** Authentication lives in named Docker volumes (`llm-*`). Do not mount SSH keys, the Docker socket, or host home directories.
 - Never commit secrets, tokens or personal config.
@@ -60,7 +62,7 @@ Named volumes (see README §3) hold CLI auth and config and **must survive rebui
 No Docker is guaranteed inside the container (and it should not be: no socket is mounted), so verify what you can statically and say clearly what you could not test:
 
 ```bash
-python3 -c "import json; json.load(open('devcontainer.json'))"   # JSON validity (no comments allowed here)
+python3 -c "import json; json.load(open('devcontainer.json')); json.load(open('seccomp-userns.json'))"   # JSON validity (no comments allowed here)
 bash -n images/init-firewall.sh && bash -n images/fix-volume-perms.sh
 grep -n '^# [0-9][0-9] —' images/Dockerfile                       # step numbering is sequential
 ```
@@ -72,7 +74,11 @@ sudo -n -l                                  # only the two scripts should be lis
 curl -sS --max-time 5 https://example.com   # must fail
 curl -sS https://api.github.com/zen         # must succeed
 claude --version && codex --version && gemini --version && gh --version
+bwrap --ro-bind / / --unshare-user --unshare-pid true && echo sandbox-ok   # must print sandbox-ok
+grep Seccomp: /proc/self/status             # 2 means a filter is active, and it is the custom profile
 ```
+
+If the container fails to start after changing `seccomp-userns.json`, the profile is invalid or its path is wrong: fix the file and rebuild. The path in `runArgs` is read on the host, relative to the project folder.
 
 Never claim a change "works" if you only ran the static checks. Report them as static checks.
 

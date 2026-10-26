@@ -87,7 +87,7 @@ The project records the selected submodule commit, not an automatically moving b
 ## 5. Security: firewall and restricted sudo
 
 - Outbound traffic is **default-deny**. `init-firewall.sh` runs on every start and allows only DNS, loopback, the Docker host network, GitHub's published ranges and the hostnames in `images/allowed-domains.txt`. IPv6 is blocked. Add a hostname to that file and rebuild if a tool needs it.
-- The container needs `--cap-add=NET_ADMIN --cap-add=NET_RAW` (set in `runArgs`).
+- The container needs `--cap-add=NET_ADMIN --cap-add=NET_RAW` (set in `runArgs`). It also runs with `seccomp-userns.json`, Docker's default seccomp profile plus the namespace and mount syscalls that bubblewrap needs. That lets Codex use its filesystem sandbox, at the cost of a wider kernel attack surface (user namespaces) inside the container. No capability is added. If the profile is invalid the container will not start, so rebuild after fixing it.
 - `node` has **no general sudo**: it may only run `init-firewall.sh` and `fix-volume-perms.sh`. To install a system package, add it to the Dockerfile and rebuild.
 - Allowlisted hostnames are resolved to IPs at start; CDN-backed hosts whose IPs rotate may need a container restart.
 
@@ -108,25 +108,25 @@ You talk to Claude, Codex or Gemini in the container. They follow the `engineeri
 | Phase | Input | Skill | Output | Gate (you approve) |
 | --- | --- | --- | --- | --- |
 | 0. Define | idea, existing docs and code | `define` | `docs/project/*`, `GLOSSARY.md`, ADRs | project, requirements, roadmap |
-| 1. Align | a roadmap feature or request | `align` | `spec.md`, `decisions.md` | spec and test seams |
-| 2. Design | spec, existing code | `design` | `design.md`, `ui.md`, UI proposals, `contract.md` | the shape, an accepted UI proposal, clash check clean |
-| 3. Slice | spec, design, contract | `slice` | `issues/NN-*.md`, dependency graph | ticket breakdown |
+| 1. Align | a roadmap feature or request | `align` | `spec.md`, `decisions.md`, journeys (UI) | spec and test seams |
+| 2. Design | spec, existing code | `design` | `design.md`, `ui.md`, UI proposals, the contract (`docs/project/contracts/`) | the shape, an accepted UI proposal, clash check with evidence |
+| 3. Slice | spec, design, contract | `slice` | `issues/NN-*.md`, dependency graph | ticket breakdown, every requirement covered |
 | 4. Build | a ticket, or the whole graph | `build` | commits, ticket notes, `changes.md` | criteria hold, suite green |
 | 5. Verify | built change, spec, tickets | `verify` | `verify.md`, `evidence/` | evidence, findings fixed |
 
-`build` has two modes. For one ticket it works test-first itself. For the whole graph it runs independent tickets in parallel through `delegate`, checks each result, and merges onto an integration branch. Nothing is merged into main or pushed unless you ask.
+`build` has two modes. For one ticket it works test-first itself. For the whole graph it runs independent tickets in parallel through `delegate`, checks each result, and merges onto an integration branch, with a cap of three delegate launches per ticket. The agent asks once whether it may commit and records the answer in `STATUS.md`. Nothing is merged into main or pushed unless you ask.
 
 ### Start and choose the path
 
 Type `/engineering-flow` and describe what you want, or call a skill directly. Ask "what phase are we in?" at any time. The agent reads `.scratch/<feature>/STATUS.md`.
 
-| Size | Example | Path |
-| --- | --- | --- |
-| Trivial | typo, config tweak | build, verify (short note) |
-| Small | bug fix | diagnose if a bug, build, verify |
-| Medium | one feature in one module | short align, design, build, verify |
-| Large | several modules, migration | align, design, slice, build, verify |
-| New project, or first feature with a UI | a new app | define, then the Large path per feature |
+| Size | Example | Path | Stands in for skipped steps |
+| --- | --- | --- | --- |
+| Trivial | typo, config tweak | build, verify | the goal and its check, in one line |
+| Small | bug fix | diagnose if a bug, build, verify | goal, check and test seam in the reply |
+| Medium | one feature in one module | short align, design, build, verify | the spec's acceptance list becomes ticket `01` |
+| Large | several modules, migration | align, design, slice, build, verify | nothing skipped |
+| New project, or first feature with a UI | a new app | define, then the Large path per feature | nothing skipped |
 
 When in doubt, take the larger path.
 
@@ -146,15 +146,15 @@ The UI and the backend are decided together so their requirements cannot clash.
 
 ```
 (journeys + one requirements list) -> define -> (shared requirements, glossary)
-(screens and states)               -> design -> (UI proposals from Codex) -> (you accept or iterate)
-(accepted UI)                      -> design -> (contract.md) -> clash check -> (agreed UI and API)
-(contract.md)                      -> slice  -> (contract ticket first, then UI and API tickets in parallel)
+(screens and states)               -> design -> (contract skeleton) -> (UI proposals from Codex) -> (you accept or iterate)
+(accepted UI)                      -> design -> (finished contract) -> clash check with evidence -> (agreed UI and API)
+(the contract)                     -> slice  -> (contract ticket first, then UI and API tickets in parallel)
 (UI + API + contract tests)        -> verify -> (every journey walked end to end)
 ```
 
-A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in `decisions.md`.
+A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in the feature's `decisions.md`. The clash check needs evidence for each row, including a script that validates the mockup's sample data against the contract schemas, so the UI cannot be approved on data the backend cannot supply.
 
-**UI proposal rounds.** Before the contract is derived, `design` asks Codex (the OpenAI CLI) for several structurally different UI directions, three by default, each a static HTML mockup with notes on its trade-offs. They are written to `.scratch/<feature>/ui/round-NN/proposal-<letter>/`. Open the `index.html` files from your host folder and compare them with the `README.md` in the round directory. For each round you choose to:
+**UI proposal rounds.** After the contract skeleton exists, `design` asks Codex (the OpenAI CLI) for several structurally different UI directions, three by default, each a static HTML mockup with notes on its trade-offs. They are written to `.scratch/<feature>/ui/round-NN/proposal-<letter>/`. Open the `index.html` files from your host folder and compare them with the `README.md` in the round directory. For each round you choose to:
 
 - accept one proposal;
 - take one as the base for another round, saying what to keep and what to change;
@@ -166,8 +166,8 @@ Every choice is logged in `decisions.md`. The accepted proposal is copied to `do
 
 | Place | Content | In git |
 | --- | --- | --- |
-| `docs/project/`, `docs/adr/`, `GLOSSARY.md` | project definition, requirements, decisions, vocabulary, accepted UI proposals | yes |
-| `.scratch/<feature>/` | spec, decisions, design, tickets, evidence, status, handoffs | no, local working memory |
+| `docs/project/`, `docs/adr/`, `GLOSSARY.md` | project definition, requirements, journeys, project decisions, vocabulary, the contract, accepted UI proposals | yes |
+| `.scratch/<feature>/` | spec, feature decisions, design, tickets, evidence, status, handoffs | no, local working memory |
 | `.scratch/delegations/<id>/` | briefs, results and branches of delegated tasks | no |
 
 Ask the agent to promote anything from `.scratch/` that you want to keep.
@@ -184,7 +184,7 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 
 ### Models and delegation
 
-`/delegate` runs a bounded task on another model through its CLI, headless. `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) maps 15 roles to a CLI, a model and a mode. Write roles work in an isolated git worktree. Add a role with one line, edit models, and rebuild.
+`/delegate` runs a bounded task on another model through its CLI, headless. `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) maps 15 roles to a CLI, a model and a mode. Write roles work in an isolated git worktree built from the committed `HEAD`, and `.scratch/` inputs are copied in explicitly. Add a role with one line, edit models, and rebuild.
 
 | Group | Roles | Model |
 | --- | --- | --- |
@@ -197,11 +197,11 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 | UI design | `ui-proposals` | Codex |
 | Writing | `docs`, `writeup` | Codex, Claude Haiku |
 
-Gemini roles (`critique`, `longctx`) use `gemini-3-flash-preview` and need `GEMINI_API_KEY` in `~/.gemini/.env`. Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it.
+Gemini roles (`critique`, `longctx`) use `gemini-3-flash-preview` and need `GEMINI_API_KEY` in `~/.gemini/.env`. Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it. Codex runs in its bubblewrap sandbox: write roles can write only in their worktree, read roles nothing, and both get a scrubbed environment (no GitHub credentials, no other CLI's config). If the sandbox cannot start, `delegate.sh` prints a warning and falls back to no sandbox, where Codex can reach any file the `node` user can, so give it only tasks you would run yourself.
 
 ### How the skills are installed
 
-The skills in `skills/` are copied into the image. On every start, `install-skills.sh` installs them into the global skills directory of Claude, Codex and Gemini (in their config volumes). Nothing is fetched at start. Skills added by hand are left alone. To change a skill, edit `skills/` and rebuild, or run `install-skills.sh` to re-apply. The skills adapt ideas from mattpocock/skills and pstack; see `skills/NOTICE.md`.
+The skills in `skills/` are copied into the image. On every start, `install-skills.sh` installs them into the global skills directory of Claude, Codex and Gemini (in their config volumes). Nothing is fetched at start. Skills added by hand are left alone. To change a skill, edit `skills/` and rebuild. To try an edit without rebuilding, run `SKILLS_SRC=/workspace/.devcontainer/skills install-skills.sh`, because the script otherwise copies the version baked into the image. The skills adapt ideas from mattpocock/skills and pstack; see `skills/NOTICE.md`.
 
 ### Habits that help
 
