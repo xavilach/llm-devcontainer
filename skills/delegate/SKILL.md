@@ -95,7 +95,17 @@ delegate.sh --gc --older-than 14 --apply           # delete the safe runs older 
 delegate.sh --gc --apply --include-unmerged        # also discard runs with unmerged work
 ```
 
-A run is removable when it is older than the limit (7 days by default, and never under one hour) and its work is safe: it has no branch (a read run), its branch is merged into `HEAD` or was never committed, or its commits change nothing. A run with unmerged commits is protected and only listed. A run whose `delegate.sh` process is still alive is skipped. Squash-merged and rebase-merged branches look unmerged, so they stay protected: remove them with `--include-unmerged` once you have checked the merge. Only valid run directories in this repo's `.scratch/delegations/` are touched, and symlinks are ignored. Do not run it with `--include-unmerged` unless you have decided to throw that work away.
+A run is removable when it is older than the limit (7 days by default, and never under one hour) and nothing in it would be lost:
+
+- its branch, if it has one, is merged into `HEAD`, was never committed, or its commits change nothing;
+- every worktree under the run is on a merged or empty commit, so a worktree you detached and committed in is protected;
+- a run that never finished (no `changed-files.txt`, for example after a timeout) has no uncommitted work left in its worktree.
+
+Everything else is protected and only listed. A run whose `delegate.sh` process is still alive is skipped. Just before removing a run the command checks it again, and deletes the branch only if it still points at the commit it judged, so work committed during the scan is not lost.
+
+- Squash-merged and rebase-merged branches look unmerged, so they stay protected. Check the merge, then use `--include-unmerged`.
+- Only valid run directories in this repo's `.scratch/delegations/` are touched. A symlinked `.scratch` or `delegations`, or a symlinked run entry, is refused or ignored.
+- Use `--include-unmerged` only when you have decided to throw that work away.
 
 ## Limits
 

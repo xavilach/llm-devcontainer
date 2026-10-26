@@ -204,7 +204,7 @@ GC="$here/delegate-gc.sh"; gcn=0
 now=$(date +%s); old=$((now + 10 * 86400))
 # Build a fresh repo holding one run of each kind, created by the real delegate.sh with the stub CLIs.
 gc_fixture() {
-  gcn=$((gcn + 1)); gcrepo="$T/gc$gcn"; git init -q "$gcrepo"; cd "$gcrepo" || exit 1
+  gcn=$((gcn + 1)); gcrepo="$T/${GCNAME:-gc$gcn}"; git init -q "$gcrepo"; cd "$gcrepo" || exit 1
   git config user.email t@t; git config user.name t; git config core.fileMode true
   echo x > a.txt; git add -A; git commit -qm base; echo '.scratch/' >> .git/info/exclude
   gcid() { basename "$(ls -d "$gcrepo"/.scratch/delegations/*"$1"* | tail -1)"; }
@@ -233,7 +233,9 @@ lacks "invalid directory names are ignored" "$out" "not-a-run"
 contains "summary has counts" "$out" "4 removable"
 contains "summary says what would be freed" "$out" "would free"
 gcrun --include-unmerged; expect "--include-unmerged alone is still a dry run" 0 $rc
+contains "the dry-run report ends with what would be freed" "$(printf '%s' "$out" | tail -1)" "would free"
 expect "--include-unmerged without --apply removes nothing" yes "$(exists "$id_unmerged")"
+expect "the merged run has a registered worktree before the apply" 1 "$(git -C "$gcrepo" worktree list | grep -c "$id_merged")"
 gcrun --apply; expect "--apply exit 0" 0 $rc
 for k in merged read nocommit nochange; do eval "i=\$id_$k"; expect "$k run directory removed" no "$(exists "$i")"; expect "$k run branch removed" no "$(has_branch "$i")"; done
 expect "unmerged run directory kept" yes "$(exists "$id_unmerged")"
@@ -271,6 +273,69 @@ gcrun --bogus; expect "unknown option -> 2" 2 $rc
 gcrun --older-than abc; expect "non-numeric --older-than -> 2" 2 $rc
 gcrun --older-than; expect "--older-than without a value -> 2" 2 $rc
 contains "usage message printed" "$out" "usage"
+echo "== delegate-gc safety (found by the verify reviews)"
+gc_fixture
+brief "STUB:write partial.txt precious" "STUB:fail"; run w "$T/brief.md" --tag dirty; id_dirty=$(gcid dirty)
+gcrun --apply
+expect "an unfinished run with uncommitted work is protected" yes "$(exists "$id_dirty")"
+contains "the report says why" "$(printf '%s' "$out" | grep "$id_dirty")" "uncommitted"
+expect "its partial file survives" yes "$([ -f "$gcrepo/.scratch/delegations/$id_dirty/jail/worktree/partial.txt" ] && echo yes || echo no)"
+mkdir -p docs; echo ref > docs/ref.md; brief "STUB:write o.txt 1"
+run w "$T/brief.md" --tag withinput --input docs/ref.md; id_wi=$(gcid withinput); git merge -q --no-ff -m "merge withinput" "delegate/$id_wi"
+gcrun --apply; expect "a finished run is still removable although its worktree holds leftover input copies" no "$(exists "$id_wi")"
+
+gc_fixture
+wt="$gcrepo/.scratch/delegations/$id_nochange/jail/worktree"
+git -C "$wt" checkout -q --detach; echo extra > "$wt/extra.txt"; git -C "$wt" add extra.txt; git -C "$wt" commit -qm extra
+gcrun --apply; expect "a worktree detached with extra commits is protected" yes "$(exists "$id_nochange")"
+contains "the report says the worktree holds unmerged commits" "$(printf '%s' "$out" | grep "$id_nochange")" "worktree"
+
+gc_fixture
+mv "$gcrepo/.scratch/delegations" "$T/real-delegations-$gcn"; ln -s "$T/real-delegations-$gcn" "$gcrepo/.scratch/delegations"
+gcrun --apply; expect "a symlinked delegations directory is refused -> 2" 2 $rc
+expect "nothing behind the symlink was touched" yes "$([ -d "$T/real-delegations-$gcn/$id_read" ] && echo yes || echo no)"
+rm "$gcrepo/.scratch/delegations"; mv "$T/real-delegations-$gcn" "$gcrepo/.scratch/delegations"
+mv "$gcrepo/.scratch" "$T/real-scratch-$gcn"; ln -s "$T/real-scratch-$gcn" "$gcrepo/.scratch"
+gcrun --apply; expect "a symlinked .scratch directory is refused -> 2" 2 $rc
+expect "nothing behind the .scratch symlink was touched" yes "$([ -d "$T/real-scratch-$gcn/delegations/$id_read" ] && echo yes || echo no)"
+rm "$gcrepo/.scratch"; mv "$T/real-scratch-$gcn" "$gcrepo/.scratch"
+
+gc_fixture
+git tag "delegate/$id_unmerged" "$(git rev-list --max-parents=0 HEAD | tail -1)"
+gcrun --apply
+expect "a tag named like the branch: the apply still succeeds" 0 $rc
+contains "...and the run is reported as protected, so the branch itself was judged" "$(printf '%s' "$out" | grep "$id_unmerged")" "protected"
+expect "...the branch is kept" yes "$(has_branch "$id_unmerged")"
+expect "...and the run directory is kept" yes "$(exists "$id_unmerged")"
+
+gc_fixture
+hook="cd '$gcrepo/.scratch/delegations/$id_nocommit/jail/worktree' && echo late > late.txt && git add late.txt && git commit -qm late"
+DELEGATE_GC_HOOK="$hook" gcrun --apply
+expect "work committed between the scan and the removal is not deleted" yes "$(exists "$id_nocommit")"
+contains "the report says the run changed" "$out" "changed since the scan"
+expect "other runs were still removed" no "$(exists "$id_read")"
+
+gc_fixture
+# The branch moves in the last instant, after the re-check and before the deletion.
+late="[ \"\$id\" = '$id_nocommit' ] && git -C '$gcrepo' update-ref 'refs/heads/delegate/$id_nocommit' \"\$(git -C '$gcrepo' commit-tree \"\$(git -C '$gcrepo' hash-object -t tree /dev/null)\" -p \"\$(git -C '$gcrepo' rev-parse 'refs/heads/delegate/$id_nocommit')\" -m late)\""
+DELEGATE_GC_HOOK_LATE="$late" gcrun --apply
+expect "a branch that moved at the last instant is not deleted" yes "$(has_branch "$id_nocommit")"
+expect "...and its run directory is kept" yes "$(exists "$id_nocommit")"
+expect "...the failure is reported with exit 1" 1 $rc
+
+gc_fixture
+git worktree lock "$gcrepo/.scratch/delegations/$id_merged/jail/worktree"
+gcrun --apply; expect "a removal that fails -> exit 1" 1 $rc
+expect "the run whose removal failed is kept" yes "$(exists "$id_merged")"
+expect "the other runs were still processed" no "$(exists "$id_read")"
+contains "the failure is reported" "$out" "could not remove worktree"
+git worktree unlock "$gcrepo/.scratch/delegations/$id_merged/jail/worktree"
+
+GCNAME='odd dir\with spaces' gc_fixture
+gcrun --apply; expect "a repository path with a space and a backslash works" 0 $rc
+expect "...and its merged run is removed" no "$(exists "$id_merged")"
+expect "...and its worktree registration is gone" 0 "$(git -C "$gcrepo" worktree list | grep -c "$id_merged")"
+
 gc_fixture
 out=$(cd "$gcrepo" && DELEGATE_GC_NOW=$old "$D" --gc 2>&1); rc=$?
 expect "delegate.sh --gc hands over" 0 $rc

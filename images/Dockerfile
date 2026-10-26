@@ -48,7 +48,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap \
 
 # 11 — Root-owned helper scripts and the outbound domain allowlist.
 # install-skills.sh and init-workspace.sh run as `node` (not via sudo) on each start: the first installs
-# the skills copied below, the second keeps .scratch/ out of git. delegate.sh is the delegation helper and delegate-gc.sh removes its old runs.
+# the skills copied below, the second keeps .scratch/ out of git. delegate.sh is the delegation
+# helper, and delegate-gc.sh removes its old runs.
 # Edit images/allowed-domains.txt to permit more destinations, then rebuild.
 COPY images/init-firewall.sh images/fix-volume-perms.sh images/install-skills.sh images/delegate.sh images/delegate-gc.sh \
      images/init-workspace.sh /usr/local/bin/

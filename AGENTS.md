@@ -66,7 +66,7 @@ No Docker is guaranteed inside the container (and it should not be: no socket is
 
 ```bash
 python3 -c "import json; json.load(open('devcontainer.json')); json.load(open('seccomp-userns.json'))"   # JSON validity (no comments allowed here)
-bash -n images/init-firewall.sh && bash -n images/fix-volume-perms.sh
+for f in images/*.sh; do bash -n "$f"; done
 grep -n '^# [0-9][0-9] —' images/Dockerfile                       # step numbering is sequential
 ```
 
