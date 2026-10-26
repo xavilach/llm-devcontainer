@@ -1,4 +1,4 @@
-# AGENTS.md — Working on this devcontainer
+# AGENTS.md: working on this devcontainer
 
 This repository is a **shared devcontainer, consumed as the `.devcontainer` Git submodule** of many projects. A change here affects every project that updates its submodule pointer. Treat it as shared infrastructure: small, deliberate, documented changes.
 
@@ -11,7 +11,11 @@ This repository is a **shared devcontainer, consumed as the `.devcontainer` Git 
 | `images/init-firewall.sh` | Default-deny outbound firewall, run as root on every start. |
 | `images/allowed-domains.txt` | Hostnames the firewall permits. Copied into the image as `/etc/firewall-allowed-domains.txt`. |
 | `images/fix-volume-perms.sh` | Re-owns named-volume mount points to `node` on every start. |
-| `README.md` | Human-facing setup, volumes, security notes. |
+| `skills/` | Our agent skills, baked into the image: `engineering-flow` (the pipeline overview), the phase skills `define`, `align`, `design`, `slice`, `build`, `verify`, and the support skills `diagnose`, `delegate`, `handoff`, `retro`, `unslop`. Self-contained and preconfigured: no setup skills, no third-party skills. Attribution in `skills/NOTICE.md`. |
+| `images/init-workspace.sh` | Runs as `node` on every start; creates `.scratch/` and adds it to the repo-local `.git/info/exclude`. Workflow outputs must live under `/workspace` (a bind mount), never in `/tmp`. |
+| `images/install-skills.sh` | Runs as `node` on every start; copies the baked skills into the Claude/Codex/Gemini global skills dirs. Offline, never blocks start. |
+| `images/delegate.sh`, `images/delegate-roles.conf` | Headless delegation to other models through the installed CLIs. Roles map to a CLI, a model and read or write mode. Write mode works in a git worktree. Needs no extra privileges. |
+| `README.md` | Human-facing setup, volumes, security notes and the engineering workflow guide (section 7). |
 | `AGENTS.md` | This file (`CLAUDE.md` and `GEMINI.md` point here). |
 
 ## Conventions (the owner cares about these)
@@ -22,6 +26,7 @@ This repository is a **shared devcontainer, consumed as the `.devcontainer` Git 
 4. **Single source for each setting.** The persistent-config env vars (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `GH_CONFIG_DIR`, `GIT_CONFIG_GLOBAL`, `HISTFILE`) live only in the Dockerfile `ENV`. `containerEnv` holds only runtime flags (`DEVCONTAINER`).
 5. **Pin through build args.** CLI versions are `ARG`s (`CLAUDE_CODE_VERSION`, `CODEX_VERSION`, `GEMINI_CLI_VERSION`) set in `build.args`. Add new tools the same way.
 6. **Docs move with code.** Any change to volumes, tools, security behaviour or workflow updates `README.md` (and this file if conventions change) in the same commit.
+7. **Unslop markdown.** Run the `unslop` skill (`skills/unslop`) on every markdown file you write or edit, whether it is for humans or for LLMs (README, this file, skills, specs).
 
 ## Security model — do not weaken without the owner's explicit approval
 
@@ -32,6 +37,8 @@ This repository is a **shared devcontainer, consumed as the `.devcontainer` Git 
 - Never commit secrets, tokens or personal config.
 
 ## Persistent state
+
+Workflow outputs (specs, handoffs, delegations, evidence) live under `/workspace`, the bind-mounted host project, so they survive restarts and rebuilds. Skills must never write them to `/tmp`, `$TMPDIR` or any container-only path.
 
 Named volumes (see README §3) hold CLI auth and config and **must survive rebuilds**. Never rename a volume without a migration note; renaming silently logs everyone out. Mount targets must match the directories created and chowned in the Dockerfile and in `fix-volume-perms.sh`. Adding a volume means touching four places: `devcontainer.json` mounts, the Dockerfile directory step, `fix-volume-perms.sh`, and the README volume table.
 

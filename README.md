@@ -1,8 +1,16 @@
-# Reusable LLM Devcontainer — Git submodule
+# Reusable LLM devcontainer (Git submodule)
 
-This repository is intended to be added as the **`.devcontainer` submodule** of any Git project. Its root must contain `devcontainer.json` (NOT `.devcontainer/devcontainer.json` inside this repo).
+A shared devcontainer for working with Claude Code, Codex and Gemini. It is added as the **`.devcontainer` submodule** of any Git project, so its root must contain `devcontainer.json` (not `.devcontainer/devcontainer.json` inside this repo). It provides:
 
-## 1a. New project (run on WSL2 Ubuntu)
+- the three CLIs, GitHub CLI and modern search tools, behind a default-deny firewall;
+- persistent logins in named Docker volumes;
+- a ready-made engineering workflow of agent skills, described in [section 7](#7-engineering-workflow).
+
+## 1. Set up a project
+
+Use WSL2 Ubuntu, keep repos in your WSL home (for example `~/projects`, not `/mnt/c/...`), and launch VS Code with `code .` from WSL2.
+
+**New project**
 
 ```bash
 mkdir my-project && cd my-project
@@ -11,7 +19,7 @@ git submodule add https://github.com/YOUR_USERNAME/llm-devcontainer.git .devcont
 code .
 ```
 
-## 1b. Existing project without devcontainer
+**Existing project without a devcontainer**
 
 ```bash
 git clone https://github.com/OWNER/PROJECT.git
@@ -20,7 +28,7 @@ git submodule add https://github.com/YOUR_USERNAME/llm-devcontainer.git .devcont
 code .
 ```
 
-## 1c. Existing project already containing this submodule
+**Existing project that already contains this submodule**
 
 ```bash
 git clone --recurse-submodules https://github.com/OWNER/PROJECT.git
@@ -28,11 +36,11 @@ cd PROJECT
 code .
 ```
 
-If you cloned normally, run `git submodule update --init --recursive` before opening the container.
+If you cloned normally, run `git submodule update --init --recursive` first.
 
-In VS Code (launched from WSL2), use **Dev Containers: Reopen in Container**. Docker Desktop with WSL2 integration or a working Docker Engine in WSL2 is required.
+Then run **Dev Containers: Reopen in Container** in VS Code. Docker Desktop with WSL2 integration, or a working Docker Engine in WSL2, is required.
 
-## 2. Once-only login (inside the container)
+## 2. Log in once (inside the container)
 
 ```bash
 gh auth login --hostname github.com --git-protocol https --web
@@ -83,14 +91,117 @@ The project records the selected submodule commit, not an automatically moving b
 - `node` has **no general sudo**: it may only run `init-firewall.sh` and `fix-volume-perms.sh`. To install a system package, add it to the Dockerfile and rebuild.
 - Allowlisted hostnames are resolved to IPs at start; CDN-backed hosts whose IPs rotate may need a container restart.
 
-## 6. Modern CLI tools
+## 6. Command-line tools
 
 `rg` (ripgrep), `fd`, `bat`, `fzf`, `tree`, `jq`; in interactive Bash sessions `grep`, `find`, and `cat` are aliased respectively to `rg`, `fd`, and `bat --paging=never`. These programs have different CLI flags and behavior, so use `command grep`, `command find`, `command cat` to invoke originals. Shell scripts do not load the aliases by default.
 
-## 7. Working on this devcontainer with an LLM
+## 7. Engineering workflow
+
+You talk to Claude, Codex or Gemini in the container. They follow the `engineering-flow` skill and ask you for a decision at each gate. Nothing is configured per project. The workflow is a pipeline: each phase takes inputs, runs one skill, and writes outputs that feed the next.
+
+```
+(idea) -> define -> align -> design -> slice -> build -> verify -> (verified work) -> retro
+```
+
+### The pipeline
+
+| Phase | Input | Skill | Output | Gate (you approve) |
+| --- | --- | --- | --- | --- |
+| 0. Define | idea, existing docs and code | `define` | `docs/project/*`, `GLOSSARY.md`, ADRs | project, requirements, roadmap |
+| 1. Align | a roadmap feature or request | `align` | `spec.md`, `decisions.md` | spec and test seams |
+| 2. Design | spec, existing code | `design` | `design.md`, `contract.md`, `ui.md` | the shape, clash check clean |
+| 3. Slice | spec, design, contract | `slice` | `issues/NN-*.md`, dependency graph | ticket breakdown |
+| 4. Build | a ticket, or the whole graph | `build` | commits, ticket notes, `changes.md` | criteria hold, suite green |
+| 5. Verify | built change, spec, tickets | `verify` | `verify.md`, `evidence/` | evidence, findings fixed |
+
+`build` has two modes. For one ticket it works test-first itself. For the whole graph it runs independent tickets in parallel through `delegate`, checks each result, and merges onto an integration branch. Nothing is merged into main or pushed unless you ask.
+
+### Start and choose the path
+
+Type `/engineering-flow` and describe what you want, or call a skill directly. Ask "what phase are we in?" at any time. The agent reads `.scratch/<feature>/STATUS.md`.
+
+| Size | Example | Path |
+| --- | --- | --- |
+| Trivial | typo, config tweak | build, verify (short note) |
+| Small | bug fix | diagnose if a bug, build, verify |
+| Medium | one feature in one module | short align, design, build, verify |
+| Large | several modules, migration | align, design, slice, build, verify |
+| New project, or first feature with a UI | a new app | define, then the Large path per feature |
+
+When in doubt, take the larger path.
+
+### Side pipes
+
+| Input | Skill | Output |
+| --- | --- | --- |
+| a bug or failing behavior | `/diagnose` | `diagnose.md`, regression test, fix |
+| a bounded task and a role | `/delegate` | `.scratch/delegations/<id>/` (brief, result, branch) |
+| a long or stopped session | `/handoff` | `.scratch/<feature>/handoffs/NN-<slug>.md` |
+| a finished feature or a repeated mistake | `/retro` | `retro.md`, approved checks and rules |
+| any markdown you or an agent wrote | `/unslop` | the same file without AI writing patterns |
+
+### Projects with a UI
+
+The UI and the backend are decided together so their requirements cannot clash.
+
+```
+(journeys + one requirements list) -> define -> (shared requirements, glossary)
+(screens and states)               -> design -> (contract.md) -> clash check -> (agreed UI and API)
+(contract.md)                      -> slice  -> (contract ticket first, then UI and API tickets in parallel)
+(UI + API + contract tests)        -> verify -> (every journey walked end to end)
+```
+
+A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in `decisions.md`.
+
+### Where outputs live
+
+| Place | Content | In git |
+| --- | --- | --- |
+| `docs/project/`, `docs/adr/`, `GLOSSARY.md` | project definition, requirements, decisions, vocabulary | yes |
+| `.scratch/<feature>/` | spec, decisions, design, tickets, evidence, status, handoffs | no, local working memory |
+| `.scratch/delegations/<id>/` | briefs, results and branches of delegated tasks | no |
+
+Ask the agent to promote anything from `.scratch/` that you want to keep.
+
+### What survives a restart or rebuild
+
+| Data | Where | Restart | Rebuild | Volume or folder deleted |
+| --- | --- | --- | --- | --- |
+| Workflow outputs (`docs/`, `.scratch/`, handoffs, delegations) | `/workspace`, a bind mount of your host project folder | kept | kept | lost only if you delete the host folder |
+| CLI logins, settings, installed skills | the `llm-*` named volumes | kept | kept | lost if you remove the volumes |
+| Anything else in the container, including `/tmp` | container filesystem | lost on rebuild | lost | lost |
+
+Agents write every file under the workspace and never to `/tmp`. `.scratch/` is added to the repo-local `.git/info/exclude` on each start, so it is not committed and `git clean -fd` leaves it alone. Only committed work reaches the remote: commit and push `docs/`, and ask the agent to promote anything from `.scratch/` that must be shared or backed up. If you open the project with "Clone Repository in Container Volume", the workspace lives in a Docker volume instead, so keep that volume.
+
+### Models and delegation
+
+`/delegate` runs a bounded task on another model through its CLI, headless. `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) maps 14 roles to a CLI, a model and a mode. Write roles work in an isolated git worktree. Add a role with one line, edit models, and rebuild.
+
+| Group | Roles | Model |
+| --- | --- | --- |
+| Judgment (advises only) | `decide`, `design`, `security` | Claude Opus |
+| Building | `implement`, `tests`, `diagnose` | Claude Sonnet |
+| Mechanical edits | `mechanical` | Claude Haiku |
+| Reading | `search`, `summarize` | Claude Haiku |
+| Reading, huge input | `longctx` | Gemini |
+| Second opinion | `review`, `critique` | Codex, Gemini |
+| Writing | `docs`, `writeup` | Codex, Claude Haiku |
+
+Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it.
+
+### How the skills are installed
+
+The skills in `skills/` are copied into the image. On every start, `install-skills.sh` installs them into the global skills directory of Claude, Codex and Gemini (in their config volumes). Nothing is fetched at start. Skills added by hand are left alone. To change a skill, edit `skills/` and rebuild, or run `install-skills.sh` to re-apply. The skills adapt ideas from mattpocock/skills and pstack; see `skills/NOTICE.md`.
+
+### Habits that help
+
+- Reply "yes" when the agent's recommendation is right. Questions are worded so that "yes" accepts.
+- Keep define, align, design and slice in one context. Each build ticket starts fresh.
+- Do not skip the gates. A spec is cheap to change, and a built feature is not.
+- When something surprises you, read `decisions.md` and `changes.md`. Every choice the agent made is logged there.
+- Ask for a second opinion on risky changes, through `verify` or `/delegate` with `review` or `critique`.
+- Never accept "done" without `verify.md`.
+
+## 8. Working on this devcontainer with an LLM
 
 Conventions, the security model and validation steps for humans and agents editing this repo are in [`AGENTS.md`](AGENTS.md) (`CLAUDE.md` and `GEMINI.md` point to it).
-
-## WSL2 note
-
-Keep repos in your WSL home directory, e.g. `~/projects`, rather than `/mnt/c/...` for performance. Launch VS Code with `code .` from WSL2.

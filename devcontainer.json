@@ -40,5 +40,5 @@
       }
     }
   },
-  "postStartCommand": "sudo /usr/local/bin/fix-volume-perms.sh && sudo /usr/local/bin/init-firewall.sh"
+  "postStartCommand": "sudo /usr/local/bin/fix-volume-perms.sh && sudo /usr/local/bin/init-firewall.sh && (/usr/local/bin/init-workspace.sh || true) && (/usr/local/bin/install-skills.sh || true)"
 }
