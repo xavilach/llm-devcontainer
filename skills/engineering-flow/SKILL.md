@@ -44,7 +44,7 @@ State the size in one line, then follow the path. When unsure, take the larger o
 | Large | several modules, migration, new subsystem | align, design, slice, build, verify | Everything. |
 | New project, major initiative, or first feature with a UI | a new app, a rewrite | define first, then the Large path per feature | Everything. |
 
-Add the base commit and the commit setting (see below) to `STATUS.md` for any path that has one. Depth scales with size: the second design alternative, the proof ladder and a multi-proposal UI round are Large-path tools. Medium work gets the short version.
+Add the base commit, the commit setting and the subagent setting (see below) to `STATUS.md` for any path that has one. Depth scales with size: the second design alternative, the proof ladder and a multi-proposal UI round are Large-path tools. Medium work gets the short version.
 
 ## Where outputs live
 
@@ -65,7 +65,7 @@ Write every file under the workspace (the repo), never to `/tmp` or `$TMPDIR`. T
 # Status: <feature>
 
 Size: <trivial|small|medium|large>   UI: <yes|no>
-Base commit: <sha>   Commits: <allowed|ask|none>
+Base commit: <sha>   Commits: <allowed|ask|none>   Subagents: <normal|minimal|none>
 Current phase: <phase>   Next step: <one sentence>
 
 | Phase | Gate | Date | Outputs |
@@ -92,8 +92,44 @@ This devcontainer fixes the project setup. Skills never ask the user to configur
 
 - **Commands.** Take setup, build, typecheck and test commands from the repo's `AGENTS.md` or `CLAUDE.md`, then from its manifest files. If neither says, ask once and write the answer to `STATUS.md`.
 - **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search.
-- **Models.** Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex). The roles are in `delegate-roles.conf`.
-- **Other CLIs.** Claude and Codex are used and logged in. Gemini is installed but disabled. Skills that want an independent opinion call a CLI other than the one you are running in.
+- **Models.** Whether to spawn at all is decided by "Subagents and delegation" above. Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex), `critique` (Gemini). The roles are in `delegate-roles.conf`.
+- **Other CLIs.** Claude, Codex and Gemini are installed and logged in. Skills that want an independent opinion call a CLI other than the one you are running in.
+
+## Subagents and delegation
+
+A subagent starts cold, re-reads what you already know, and bills at the parent model's price unless you pick another. Spawn one only when it saves more than it costs. This section is the one policy. `align`, `build`, `verify` and `delegate` point here.
+
+Two mechanisms exist. The in-session Agent tool (types `Explore`, `Plan`, `general-purpose`, with a `model` argument) is for reading and searching. `delegate.sh` is for other vendors, write roles in worktrees, and the whole-graph run.
+
+**Do it inline** with `rg`, `fd`, `git` and direct reads when the target is findable in three searches or fewer, the task touches fewer than about five files, or the next step needs the full detail.
+
+**Spawn** only when the work is large or noisy and only the conclusion matters, it is independent of what you do next, or a fresh or different-vendor context is the point (an independent review).
+
+| Size | Subagents |
+| --- | --- |
+| Trivial, small | None, unless the user asks. |
+| Medium | Inline by default. One `Explore` (Haiku) sweep if the code area is unfamiliar. One fresh-context reviewer in `verify` only for risky changes. |
+| Large | Search sweeps on Haiku, two fresh-context reviewers in `verify`, whole-graph `build` when the graph has parallel tickets. |
+
+Pick the cheapest type and model that can do the job.
+
+| Job | Use |
+| --- | --- |
+| Find or read many files, report `file:line` | `Explore` with `model: haiku` |
+| Sketch a design or plan | `Plan` |
+| Implement a ticket with a runnable check | `delegate.sh implement` (Sonnet), or `general-purpose` with `model: sonnet` |
+| Hard decision, security or blast-radius read | `decide` (Opus), only when judgment is the point |
+| Independent review or critique | `delegate.sh review` or `critique` (other vendor) |
+
+`general-purpose` on the parent model is the last resort and is never used for pure search.
+
+How to run them:
+
+- Write a full brief: goal, absolute paths, decisions already made, what not to touch, and the exact output wanted ("under 200 words, a list of `file:line`"). Ask for conclusions, not file dumps.
+- Launch independent agents in one turn, at most three at once.
+- Do not redo a subagent's work or spawn a second one for the same question. If its report is thin, read the one file it names. Continue a finished agent with SendMessage instead of starting a new one.
+- Treat every report as a claim and spot-check two or three cited lines (see `delegate` section 5).
+- When the user is short on usage, drop every optional spawn and say so. Record the setting in `STATUS.md` as `Subagents: normal|minimal|none`.
 
 ## Rules for every phase
 

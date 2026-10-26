@@ -54,6 +54,8 @@ Check each unit before starting the next. A break caught at the unit that caused
 
 ## Whole graph
 
+Use this mode on the Large path only, when at least two tickets can run in parallel. A chain of dependent tickets, or a Medium feature with one or two tickets, is cheaper to build yourself with the loop above (see "Subagents and delegation" in `engineering-flow`). Respect `Subagents:` in `STATUS.md`.
+
 You do not write the code in this mode. You schedule tickets, brief implementers through `delegate`, check what comes back, and merge it.
 
 ### 1. Plan the run

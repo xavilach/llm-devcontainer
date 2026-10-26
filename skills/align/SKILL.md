@@ -21,7 +21,7 @@ Treat the plan as a tree of decisions where each decision unlocks the ones below
 
 - Ask the whole frontier in one round. Number the questions and give your recommended answer to each, worded so that "yes" accepts it.
 - Wait for the answers, then recompute the frontier and ask the next round. A question that depends on another open question waits for a later round.
-- Look up facts yourself. Read the code, the docs and the history, and use a subagent for wide searches. Ask the user only about decisions, never about facts you can find.
+- Look up facts yourself. Read the code, the docs and the history, and use one `Explore` subagent on Haiku only for a wide search that `rg` and `fd` cannot answer (see "Subagents and delegation" in `engineering-flow`). Ask the user only about decisions, never about facts you can find.
 - Write each question and its answer to `decisions.md` as you go, with an ID (`D-001`), the decision and the reason. Never rely on the chat as the record.
 - For a feature with a UI, the same rounds cover both sides. Ask about the screens, states (loading, empty, error, partial) and copy alongside the data, validation and permissions behind them. Do not finish one side first.
 - Reversible questions you can answer well do not need a round: assume the answer, write it to `decisions.md` as an assumption, and move on. Ask about irreversible, outward-facing and scope-changing decisions.
