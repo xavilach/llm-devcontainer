@@ -1,0 +1,40 @@
+{
+  "name": "LLM Devcontainer (Shared Submodule)",
+  "build": {
+    "dockerfile": "images/Dockerfile",
+    "context": "."
+  },
+  "remoteUser": "node",
+  "containerUser": "node",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "mounts": [
+    "source=llm-claude-config,target=/home/node/.claude,type=volume",
+    "source=llm-codex-config,target=/home/node/.codex,type=volume",
+    "source=llm-gemini-config,target=/home/node/.gemini,type=volume",
+    "source=llm-github-cli-config,target=/home/node/.config/gh,type=volume",
+    "source=llm-git-config,target=/home/node/.config/git,type=volume",
+    "source=llm-vscode-extensions,target=/home/node/.vscode-server/extensions,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "CODEX_HOME": "/home/node/.codex",
+    "GH_CONFIG_DIR": "/home/node/.config/gh",
+    "GIT_CONFIG_GLOBAL": "/home/node/.config/git/config",
+    "DEVCONTAINER": "true"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "openai.chatgpt",
+        "Google.geminicodeassist",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+  "postCreateCommand": "claude --version && codex --version && gemini --version && gh --version"
+}
