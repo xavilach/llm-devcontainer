@@ -1,0 +1,76 @@
+# Outbound allowlist, one exact hostname per line (no wildcards: names are resolved to IPs at start).
+# GitHub address ranges (github.com, api.github.com, git) are fetched separately by the script.
+# Keep entries narrow: every host here is a possible exfiltration path.
+
+# --- GitHub (hosts outside the published web/api/git ranges) ---
+raw.githubusercontent.com
+objects.githubusercontent.com
+codeload.github.com
+github-releases.githubusercontent.com
+ghcr.io
+
+# --- Anthropic / Claude Code ---
+api.anthropic.com
+console.anthropic.com
+platform.claude.com
+claude.ai
+code.claude.com
+docs.anthropic.com
+statsig.anthropic.com
+statsig.com
+sentry.io
+
+# --- OpenAI / Codex ---
+api.openai.com
+auth.openai.com
+chatgpt.com
+
+# --- Google / Gemini ---
+generativelanguage.googleapis.com
+aiplatform.googleapis.com
+oauth2.googleapis.com
+accounts.google.com
+cloudcode-pa.googleapis.com
+
+# --- Other LLM APIs ---
+openrouter.ai
+api.mistral.ai
+
+# --- JavaScript / Node ---
+registry.npmjs.org
+registry.yarnpkg.com
+nodejs.org
+
+# --- Python ---
+pypi.org
+files.pythonhosted.org
+
+# --- Rust ---
+crates.io
+index.crates.io
+static.crates.io
+static.rust-lang.org
+sh.rustup.rs
+
+# --- Go ---
+go.dev
+proxy.golang.org
+sum.golang.org
+
+# --- Java / JVM ---
+repo1.maven.org
+repo.maven.apache.org
+plugins.gradle.org
+services.gradle.org
+
+# --- Containers ---
+registry-1.docker.io
+auth.docker.io
+production.cloudflare.docker.com
+
+# --- VS Code server and extensions ---
+marketplace.visualstudio.com
+gallery.vsassets.io
+vscode.blob.core.windows.net
+update.code.visualstudio.com
+main.vscode-cdn.net

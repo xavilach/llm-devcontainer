@@ -2,8 +2,15 @@
   "name": "LLM Devcontainer (Shared Submodule)",
   "build": {
     "dockerfile": "images/Dockerfile",
-    "context": "."
+    "context": ".",
+    "args": {
+      "CLAUDE_CODE_VERSION": "latest",
+      "CODEX_VERSION": "latest",
+      "GEMINI_CLI_VERSION": "latest"
+    }
   },
+  "runArgs": ["--init", "--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+  "updateRemoteUserUID": true,
   "remoteUser": "node",
   "containerUser": "node",
   "workspaceFolder": "/workspace",
@@ -14,13 +21,10 @@
     "source=llm-gemini-config,target=/home/node/.gemini,type=volume",
     "source=llm-github-cli-config,target=/home/node/.config/gh,type=volume",
     "source=llm-git-config,target=/home/node/.config/git,type=volume",
+    "source=llm-bash-history,target=/commandhistory,type=volume",
     "source=llm-vscode-extensions,target=/home/node/.vscode-server/extensions,type=volume"
   ],
   "containerEnv": {
-    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
-    "CODEX_HOME": "/home/node/.codex",
-    "GH_CONFIG_DIR": "/home/node/.config/gh",
-    "GIT_CONFIG_GLOBAL": "/home/node/.config/git/config",
     "DEVCONTAINER": "true"
   },
   "customizations": {
@@ -36,5 +40,5 @@
       }
     }
   },
-  "postCreateCommand": "claude --version && codex --version && gemini --version && gh --version"
+  "postStartCommand": "sudo /usr/local/bin/fix-volume-perms.sh && sudo /usr/local/bin/init-firewall.sh"
 }
