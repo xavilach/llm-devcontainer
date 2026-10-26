@@ -38,6 +38,8 @@ Work in vertical slices. One behavior goes through red, green, then the next. Ne
 
 Run the typecheck often, single test files while working, and the full suite once at the end.
 
+For each safety rule (a guard that protects data, a refusal, a limit), break it on purpose once and see a test fail. A guard test must assert the reason, such as "reported as protected", and not only the outcome, because buggy code can reach the same outcome by another path. If breaking the rule fails nothing, the test is weak.
+
 A good test checks behavior through the public interface, so a refactor that keeps behavior does not break it. It reads like a specification, for example "a user can check out with a valid cart". Its expected value comes from an independent source such as a literal, a worked example or the spec, because a test that recomputes the value the way the code does can never fail. Mock only at system boundaries you do not control, not the module's own collaborators, and do not call private methods or check results through a side channel such as querying the database directly.
 
 Check each unit before starting the next. A break caught at the unit that caused it is cheap to find, and a break found after a batch is buried. In a sweep or a run of similar edits, bracket each change with the check: known-good state, one change, run the check, continue. Order commits so the sequence reads as an argument, for example the failing test first, then the fix. Subtract before you add: remove dead code and redundant checks before building on top of them.

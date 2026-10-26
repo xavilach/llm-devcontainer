@@ -96,6 +96,8 @@ On the Large path, find what the change could break outside the diff. On the Med
 - Timing, such as teardown order and async boundaries.
 - Data that crosses a boundary, such as API JSON, database columns, wire formats, another language reading the same bytes, feature flags.
 
+If the feature deletes or overwrites anything, first list everything the operation destroys, not only the main object: files and directories, the contents of a working tree, refs and branches, and whatever a path or a symlink resolves to. Give each item its own safety fact, or mark it unprotected. A safety fact about one item says nothing about the others.
+
 Most risky-looking changes are safe because of one fact, for example "this call only removes entries that are already dead". Find that fact and prove it by running real code, such as a small script or test that calls the actual function. Rate your confidence for each fact.
 
 1. Asserted only. Worthless alone.
