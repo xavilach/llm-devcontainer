@@ -63,6 +63,7 @@ Use the authentication prompts for each CLI. No SSH-agent forwarding, SSH keys, 
 | `llm-git-config` | `/home/node/.config/git` | Git configuration, credential helper |
 | `llm-bash-history` | `/commandhistory` | Persistent Bash history |
 | `llm-vscode-extensions` | `/home/node/.vscode-server/extensions` | VS Code extensions installed in containers |
+| `llm-go-cache` | `/home/node/go` | Go module and build cache (`GOPATH`) |
 
 VS Code sometimes relocates the server/extensions path between versions, VS Code variants, and remote environments. This mount targets the standard stable VS Code Server location; `customizations.vscode.extensions` also provisions the declared baseline extensions. UI-side VS Code extensions remain installed on the WSL/desktop host rather than inside this volume.
 
@@ -94,6 +95,8 @@ The project records the selected submodule commit, not an automatically moving b
 ## 6. Command-line tools
 
 `rg` (ripgrep), `fd`, `bat`, `fzf`, `tree`, `jq`; in interactive Bash sessions `grep`, `find`, and `cat` are aliased respectively to `rg`, `fd`, and `bat --paging=never`. These programs have different CLI flags and behavior, so use `command grep`, `command find`, `command cat` to invoke originals. Shell scripts do not load the aliases by default.
+
+Go development tools: the Go toolchain (version set by the `GO_VERSION` build arg), `staticcheck`, and `socat` for pty pairs that stand in for serial ports. Modules download through `proxy.golang.org`, which is on the firewall allowlist. Playwright with Chromium is installed for driving web UIs; the browser is baked in at build time under `/opt/ms-playwright`, so it needs no firewall entry.
 
 ## 7. Engineering workflow
 

@@ -6,7 +6,10 @@
     "args": {
       "CLAUDE_CODE_VERSION": "latest",
       "CODEX_VERSION": "latest",
-      "GEMINI_CLI_VERSION": "latest"
+      "GEMINI_CLI_VERSION": "latest",
+      "GO_VERSION": "1.27.3",
+      "STATICCHECK_VERSION": "latest",
+      "PLAYWRIGHT_VERSION": "latest"
     }
   },
   "runArgs": [
@@ -28,7 +31,8 @@
     "source=llm-github-cli-config,target=/home/node/.config/gh,type=volume",
     "source=llm-git-config,target=/home/node/.config/git,type=volume",
     "source=llm-bash-history,target=/commandhistory,type=volume",
-    "source=llm-vscode-extensions,target=/home/node/.vscode-server/extensions,type=volume"
+    "source=llm-vscode-extensions,target=/home/node/.vscode-server/extensions,type=volume",
+    "source=llm-go-cache,target=/home/node/go,type=volume"
   ],
   "containerEnv": {
     "DEVCONTAINER": "true"
@@ -39,7 +43,8 @@
         "anthropic.claude-code",
         "openai.chatgpt",
         "Google.geminicodeassist",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "golang.go"
       ],
       "settings": {
         "terminal.integrated.defaultProfile.linux": "bash"
