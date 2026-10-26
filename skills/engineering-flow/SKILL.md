@@ -15,7 +15,7 @@ One process for non-trivial work, built as a pipeline. Each phase takes inputs, 
 | --- | --- | --- | --- | --- |
 | 0. Define | `define` | idea, existing docs and code | `docs/project/*`, `GLOSSARY.md`, ADRs | user approves project, requirements, roadmap |
 | 1. Align | `align` | a roadmap feature or request | `spec.md`, `decisions.md` | user approves spec and test seams |
-| 2. Design | `design` | spec, existing code | `design.md`, `contract.md` and `ui.md` (UI work), ADRs | user agrees with the shape, clash check clean |
+| 2. Design | `design` | spec, existing code | `design.md`, `ui.md`, `ui/round-NN/` proposals, `contract.md` (UI work), ADRs | user agrees with the shape and accepts a UI proposal, clash check clean |
 | 3. Slice | `slice` | spec, design, contract | `issues/NN-*.md`, `issues/README.md` | user approves tickets, every requirement covered |
 | 4. Build | `build` | a ticket, or the whole graph | commits, ticket notes, `changes.md`, `orchestration.md` | criteria hold, suite green |
 | 5. Verify | `verify` | built change, spec, tickets | `verify.md`, `evidence/` | evidence recorded, findings fixed |
@@ -51,6 +51,7 @@ Every phase writes its outputs as it goes. A decision that only lives in the cha
 Write every file under the workspace (the repo), never to `/tmp` or `$TMPDIR`. The workspace is a bind mount of the host folder, so it survives container restarts and rebuilds. `.scratch/` is kept out of git through the repo-local `.git/info/exclude`, so it stays on disk but is not committed.
 
 - **Project knowledge** is committed: `docs/project/`, `docs/adr/` and `GLOSSARY.md`.
+- **The accepted UI proposal** is copied to `docs/project/ui/<feature-slug>/` and committed. The rejected ones stay in `.scratch/<feature-slug>/ui/`.
 - **Feature working files** are local and not committed unless the user asks: `.scratch/<feature-slug>/` holds the spec, decisions, design, tickets, evidence, handoffs and `STATUS.md`. Promote anything worth keeping to `docs/`.
 - **Delegated work** is under `.scratch/delegations/<id>/`.
 - **`STATUS.md`** in each feature directory records the size, whether there is a UI, the current phase, the next step, and one row per passed gate with date and outputs. Update it at every gate. Read it first when resuming.
@@ -64,7 +65,7 @@ When the work has a user interface, the UI and the rest are decided together. If
 
 1. `define` runs first and fixes users, journeys, scope, vocabulary and cross-cutting rules for both sides.
 2. One requirements list covers UI, API, data and operations needs, each tagged with its layer. A UI need and the backend need it implies are written in the same pass.
-3. `design` derives screens and their states from the journeys, then the contract from what the screens need, then runs the clash check. A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in `decisions.md`.
+3. `design` derives screens and their states from the journeys, then has Codex draft several distinct UI proposals as HTML mockups. The user accepts one, or picks one as the base for another round. The contract is derived from the accepted screens, then the clash check runs. A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in `decisions.md`.
 4. `slice` makes the contract ticket first. UI and backend tickets then run in parallel against stubs, and vertical slices join them.
 5. `verify` runs contract tests on both sides and walks every journey through the real UI.
 

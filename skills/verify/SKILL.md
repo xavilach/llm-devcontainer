@@ -56,13 +56,7 @@ Report the two axes under separate headings and do not merge or rerank them. A c
 
 Use this for large, security-sensitive, irreversible or hard-to-test changes. A different model catches different bugs, and findings that two models raise independently are the strongest signal.
 
-Call a CLI other than the one you are running in, from the shell, read-only, with a prompt that states the intent, the diff command and the spec path:
-
-- Codex: `codex exec --sandbox read-only "<prompt>"`
-- Gemini: `gemini -p "<prompt>"`
-- Claude: `claude -p "<prompt>" --permission-mode plan`
-
-Ask it to review adversarially and not to edit anything. If a CLI is unavailable, fall back to a fresh-context subagent. Then act as the lead reviewer and sort every finding into one bucket with a one-line reason.
+Use the `delegate` skill with a role from a vendor other than the one that wrote the code: `review` (Codex) for the diff, or `critique` (Gemini) for the spec and design. Write a brief with the intent, the diff command and the spec path, for example `delegate.sh review .scratch/briefs/review.md`. Ask it to review adversarially and not to edit anything. If a CLI is unavailable, fall back to a fresh-context subagent. Then act as the lead reviewer and sort every finding into one bucket with a one-line reason.
 
 - **Act on.** Real defects in correctness, security or maintainability. These would block a PR.
 - **Consider.** Legitimate, but the cost may outweigh the benefit now. Put it to the user.

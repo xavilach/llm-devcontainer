@@ -32,6 +32,7 @@ This repository is a **shared devcontainer, consumed as the `.devcontainer` Git 
 
 - **Restricted sudo.** `node` may run only `init-firewall.sh` and `fix-volume-perms.sh` via `/etc/sudoers.d/node`. Never restore `NOPASSWD:ALL`, never add a script that accepts arbitrary arguments or commands, and keep sudo-able scripts root-owned and not writable by `node`.
 - **Default-deny firewall.** Outbound traffic is limited to DNS, loopback, the Docker host `/24`, GitHub ranges and `allowed-domains.txt`. IPv6 is blocked. To permit a destination, add a hostname to `allowed-domains.txt` (with a section comment) and rebuild. Do not add a catch-all rule, disable the verification at the end of the script, or widen the host network match.
+- **Codex delegates.** Codex's own sandbox cannot start here (no user namespaces), so `delegate.sh` runs it with `--sandbox danger-full-access`. The container is the boundary. Do not loosen seccomp or add capabilities to make the Codex sandbox work.
 - **Capabilities.** `NET_ADMIN` and `NET_RAW` exist only so the firewall script can run. Do not add other capabilities or `--privileged`.
 - **No host credential mounts.** Authentication lives in named Docker volumes (`llm-*`). Do not mount SSH keys, the Docker socket, or host home directories.
 - Never commit secrets, tokens or personal config.

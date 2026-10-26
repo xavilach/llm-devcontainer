@@ -109,7 +109,7 @@ You talk to Claude, Codex or Gemini in the container. They follow the `engineeri
 | --- | --- | --- | --- | --- |
 | 0. Define | idea, existing docs and code | `define` | `docs/project/*`, `GLOSSARY.md`, ADRs | project, requirements, roadmap |
 | 1. Align | a roadmap feature or request | `align` | `spec.md`, `decisions.md` | spec and test seams |
-| 2. Design | spec, existing code | `design` | `design.md`, `contract.md`, `ui.md` | the shape, clash check clean |
+| 2. Design | spec, existing code | `design` | `design.md`, `ui.md`, UI proposals, `contract.md` | the shape, an accepted UI proposal, clash check clean |
 | 3. Slice | spec, design, contract | `slice` | `issues/NN-*.md`, dependency graph | ticket breakdown |
 | 4. Build | a ticket, or the whole graph | `build` | commits, ticket notes, `changes.md` | criteria hold, suite green |
 | 5. Verify | built change, spec, tickets | `verify` | `verify.md`, `evidence/` | evidence, findings fixed |
@@ -146,18 +146,27 @@ The UI and the backend are decided together so their requirements cannot clash.
 
 ```
 (journeys + one requirements list) -> define -> (shared requirements, glossary)
-(screens and states)               -> design -> (contract.md) -> clash check -> (agreed UI and API)
+(screens and states)               -> design -> (UI proposals from Codex) -> (you accept or iterate)
+(accepted UI)                      -> design -> (contract.md) -> clash check -> (agreed UI and API)
 (contract.md)                      -> slice  -> (contract ticket first, then UI and API tickets in parallel)
 (UI + API + contract tests)        -> verify -> (every journey walked end to end)
 ```
 
 A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in `decisions.md`.
 
+**UI proposal rounds.** Before the contract is derived, `design` asks Codex (the OpenAI CLI) for several structurally different UI directions, three by default, each a static HTML mockup with notes on its trade-offs. They are written to `.scratch/<feature>/ui/round-NN/proposal-<letter>/`. Open the `index.html` files from your host folder and compare them with the `README.md` in the round directory. For each round you choose to:
+
+- accept one proposal;
+- take one as the base for another round, saying what to keep and what to change;
+- reject all, with the reasons, and start a round with new directions.
+
+Every choice is logged in `decisions.md`. The accepted proposal is copied to `docs/project/ui/<feature>/` and committed. It is a reference: `build` implements it in the project's own stack.
+
 ### Where outputs live
 
 | Place | Content | In git |
 | --- | --- | --- |
-| `docs/project/`, `docs/adr/`, `GLOSSARY.md` | project definition, requirements, decisions, vocabulary | yes |
+| `docs/project/`, `docs/adr/`, `GLOSSARY.md` | project definition, requirements, decisions, vocabulary, accepted UI proposals | yes |
 | `.scratch/<feature>/` | spec, decisions, design, tickets, evidence, status, handoffs | no, local working memory |
 | `.scratch/delegations/<id>/` | briefs, results and branches of delegated tasks | no |
 
@@ -175,7 +184,7 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 
 ### Models and delegation
 
-`/delegate` runs a bounded task on another model through its CLI, headless. `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) maps 14 roles to a CLI, a model and a mode. Write roles work in an isolated git worktree. Add a role with one line, edit models, and rebuild.
+`/delegate` runs a bounded task on another model through its CLI, headless. `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) maps 15 roles to a CLI, a model and a mode. Write roles work in an isolated git worktree. Add a role with one line, edit models, and rebuild.
 
 | Group | Roles | Model |
 | --- | --- | --- |
@@ -185,9 +194,10 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 | Reading | `search`, `summarize` | Claude Haiku |
 | Reading, huge input | `longctx` | Gemini |
 | Second opinion | `review`, `critique` | Codex, Gemini |
+| UI design | `ui-proposals` | Codex |
 | Writing | `docs`, `writeup` | Codex, Claude Haiku |
 
-Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it.
+Gemini roles (`critique`, `longctx`) need headless Gemini authentication: run `gemini` once and log in, or provide `GEMINI_API_KEY`. Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it.
 
 ### How the skills are installed
 

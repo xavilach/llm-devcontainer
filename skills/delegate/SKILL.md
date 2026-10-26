@@ -53,6 +53,12 @@ Roles and models are set in `/etc/delegate-roles.conf` (source `images/delegate-
 | `summarize` | Claude Haiku | Logs, long documents, PR threads, diffs, session transcripts. |
 | `longctx` | Gemini | Input too big for the others, such as a whole repo or a huge log. Gemini's strength is a large context window. |
 
+**UI design**
+
+| Role | Model | Use for |
+| --- | --- | --- |
+| `ui-proposals` | Codex (OpenAI) | One distinct UI direction as a static HTML mockup with notes (write). `design` runs several in parallel and the user chooses. |
+
 **Writing for people**
 
 | Role | Model | Use for |
@@ -106,6 +112,7 @@ A delegate's report is a claim, not evidence.
 
 ## Limits
 
-- Write mode isolates by working directory and branch, not by a sandbox. Codex runs in its `workspace-write` sandbox, but Claude and Gemini rely on their own permission modes. Write briefs that name the scope.
+- Write mode isolates by working directory and branch, not by a sandbox. Codex runs with its own sandbox off, because the sandbox cannot start in this container. The container is the boundary, and Codex read roles run in a throwaway worktree that is discarded. Claude and Gemini rely on their own permission modes. Write briefs that name the scope.
+- Gemini needs headless authentication. If a Gemini role exits 5 with "must specify the GEMINI_API_KEY", run `gemini` interactively and log in, or provide an API key, then retry. Until then use a Claude or Codex role for the same job: `critique` becomes a fresh Claude Opus run, and `longctx` becomes a `search` split into parts.
 - Model names go stale. If a call fails on an unknown model, update the conf file or pass `--model`.
 - Delegates start with no memory of this session. Anything you do not put in the brief does not exist for them.

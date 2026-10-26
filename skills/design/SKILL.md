@@ -6,8 +6,8 @@ description: "Phase 2 of engineering-flow. Ground the change in the existing cod
 # Design
 
 **Input:** `spec.md`, the existing code, `GLOSSARY.md`, ADRs.
-**Output:** `.scratch/<feature-slug>/design.md`; for UI work also `contract.md` and `ui.md`; ADRs for decisions that outlive the feature; `STATUS.md`.
-**Gate:** boundaries and risks are written down, the clash check has no open "no", and the user agrees with the shape.
+**Output:** `.scratch/<feature-slug>/design.md`; for UI work also `ui.md`, `ui/round-NN/` (the proposals) and `contract.md`; ADRs for decisions that outlive the feature; `STATUS.md`.
+**Gate:** boundaries and risks are written down, the clash check has no open "no", the user agrees with the shape, and for UI work the user has accepted one UI proposal.
 
 Decide the shape of the change and its risks before writing code. Skip for small changes. Do a short version for medium ones.
 
@@ -37,8 +37,9 @@ Pick one and record why, including what you rejected.
 Skip this section when the feature has no UI. Otherwise decide both sides in this one pass, in this order, and iterate until they agree.
 
 1. **Journeys to screens.** For each journey in the spec, list the screens and their states: loading, empty, error, partial, success. Write them to `ui.md` with the data each state shows and the actions it offers.
-2. **Screens to contract.** From those needs, derive the contract in `contract.md`: endpoints or events, request and response shapes, validation rules, error codes, enums, pagination and sorting, permissions, idempotency, and latency expectations. The contract is the single source of truth. Both sides build against it.
-3. **Clash check.** Fill in this table and fix every "no".
+2. **UI proposals.** Have Codex draft several distinct UI directions, and let the user choose one or ask for another round. See "UI proposal rounds" below. Do not derive the contract before a proposal is accepted.
+3. **Accepted screens to contract.** From the accepted proposal's screens and data needs, derive the contract in `contract.md`: endpoints or events, request and response shapes, validation rules, error codes, enums, pagination and sorting, permissions, idempotency, and latency expectations. The contract is the single source of truth. Both sides build against it.
+4. **Clash check.** Fill in this table and fix every "no".
 
 | Check | Answer |
 | --- | --- |
@@ -53,7 +54,32 @@ Skip this section when the feature has no UI. Otherwise decide both sides in thi
 | Real-time or polling needs are supported by the contract | |
 | Contract changes are versioned or backward compatible | |
 
-4. **Resolve together.** A clash is solved by changing the requirement, the UI or the API, never by one side working around the other. Log each resolution in `decisions.md` and update `requirements.md` if a requirement changed.
+5. **Resolve together.** A clash is solved by changing the requirement, the UI or the API, never by one side working around the other. Log each resolution in `decisions.md` and update `requirements.md` if a requirement changed.
+
+### UI proposal rounds
+
+The user picks from real alternatives instead of describing a UI in words. "ChatGPT" here means the Codex CLI (OpenAI), through the `ui-proposals` role of `delegate`. It produces static HTML mockups, not images.
+
+1. **Choose the directions.** Pick N distinct directions, three by default. They must differ in structure, such as navigation model, information density, or guided versus free-form interaction. Do not offer colour variants of one layout. Name each direction in a line.
+2. **Write one brief per direction** under `.scratch/briefs/`. Include the journeys and screens from `ui.md`, the requirement IDs, the glossary terms, any design system, brand or platform constraints from `define`, and realistic sample data taken from the requirements (or the contract draft, if one exists). Ask for:
+   - a self-contained static `ui-out/proposal-<letter>/index.html` with inline CSS and JS, no network access and no external assets, responsive, with basic accessibility (labels, focus order, contrast);
+   - the key screens, plus their loading, empty and error states, reachable by links or a small state switcher;
+   - `ui-out/proposal-<letter>/notes.md`: the concept, the trade-offs, the journeys and requirement IDs it serves, and any data or behavior it needs beyond the requirements. The notes flag those for the clash check.
+3. **Run them in parallel**, one per direction:
+
+   ```
+   delegate.sh ui-proposals .scratch/briefs/<name>.md --tag <letter>
+   ```
+
+4. **Collect.** From each delegation worktree, copy `ui-out/proposal-<letter>/` into `.scratch/<feature-slug>/ui/round-NN/proposal-<letter>/`. Open each `index.html` yourself and check it loads and covers the screens. Fix or re-run a proposal that is broken. Remove the delegation worktrees and branches.
+5. **Compare.** Write `ui/round-NN/README.md`: a table of the proposals against the journeys, the requirements and their extra data needs, with a short recommendation. Tell the user where to open the files (the host folder `.scratch/<feature-slug>/ui/round-NN/`).
+6. **The user decides.** Ask for one of these:
+   - **Accept** one proposal as is.
+   - **Base for the next round**: name the proposal, what to keep, what to change, and whether to explore new directions around it. Start a new round with the chosen proposal and the feedback as the input of the briefs.
+   - **Reject all**, with the reasons. Start a new round with new directions.
+7. **Record.** Log every choice in `decisions.md` with the round, the proposal and the reason. When one is accepted, write it into `ui.md` as the reference (the path, the screens, the states), copy it to `docs/project/ui/<feature-slug>/` so it is committed, and record the decision as an ADR if the UI style will outlive the feature.
+
+The accepted mockup is a reference, not production code. `build` implements it in the project's own stack. Extra data it needs goes through the clash check and into the contract.
 
 ## 4. Blast radius
 
