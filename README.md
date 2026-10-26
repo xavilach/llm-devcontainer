@@ -184,7 +184,7 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 
 ### Models and delegation
 
-`/delegate` runs a bounded task on another model through its CLI, headless. Seven roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
+`/delegate` runs a bounded task on another model through its CLI, headless. Six roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
 
 | Role | Model | Mode | Use for |
 | --- | --- | --- | --- |
@@ -192,11 +192,10 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 | `implement` | Claude Sonnet | write | tickets, tests, bug repro loops; mechanical edits with `--model claude-haiku-5-5` |
 | `search` | Claude Haiku | read | reading many files, logs or diffs |
 | `review` | Codex | read | second opinion on a diff |
-| `critique` | Gemini | read | second opinion on a spec or design; huge inputs |
 | `docs` | Codex | write | docs, PR text, changelog entries |
 | `ui-proposals` | Codex | write | UI mockups for the `design` phase |
 
-Write roles work in a git worktree built from the committed `HEAD`. Because `.scratch/` is git-ignored, the files a delegate needs are copied in with `--input`. Setup and check commands, and Codex itself, run in a bubblewrap jail (read-only root, empty `$HOME`, one writable directory per run). The network stays open and the repo is readable inside it, so keep secrets out of the repo; Claude roles have no shell unless `--allow` grants one. Gemini roles need `GEMINI_API_KEY` in `~/.gemini/.env`. A delegate's report is a claim, so the agent checks it before using it. Old runs accumulate; `delegate.sh --gc` lists the safe ones to remove and `--apply` removes them, protecting anything unmerged. The `delegate` skill has the options, exit codes, cleanup and the full list of limits.
+Write roles work in a git worktree built from the committed `HEAD`. Because `.scratch/` is git-ignored, the files a delegate needs are copied in with `--input`. Setup and check commands, and Codex itself, run in a bubblewrap jail (read-only root, empty `$HOME`, one writable directory per run). The network stays open and the repo is readable inside it, so keep secrets out of the repo; Claude roles have no shell unless `--allow` grants one. Gemini is installed but disabled: its `critique` role is commented out in the roles file. A delegate's report is a claim, so the agent checks it before using it. Old runs accumulate; `delegate.sh --gc` lists the safe ones to remove and `--apply` removes them, protecting anything unmerged. The `delegate` skill has the options, exit codes, cleanup and the full list of limits.
 
 ### How the skills are installed
 
@@ -208,7 +207,7 @@ The skills in `skills/` are copied into the image. On every start, `install-skil
 - Keep define, align, design and slice in one context. Each build ticket starts fresh.
 - Do not skip the gates. A spec is cheap to change, and a built feature is not.
 - When something surprises you, read `decisions.md` and `changes.md`. Every choice the agent made is logged there.
-- Ask for a second opinion on risky changes, through `verify` or `/delegate` with `review` or `critique`.
+- Ask for a second opinion on risky changes, through `verify` or `/delegate` with `review`.
 - Never accept "done" without `verify.md`.
 
 ## 8. Working on this devcontainer with an LLM

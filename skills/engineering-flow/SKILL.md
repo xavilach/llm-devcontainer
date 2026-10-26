@@ -92,8 +92,8 @@ This devcontainer fixes the project setup. Skills never ask the user to configur
 
 - **Commands.** Take setup, build, typecheck and test commands from the repo's `AGENTS.md` or `CLAUDE.md`, then from its manifest files. If neither says, ask once and write the answer to `STATUS.md`.
 - **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search.
-- **Models.** Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex), `critique` (Gemini). The roles are in `delegate-roles.conf`.
-- **Other CLIs.** Claude, Codex and Gemini are installed and logged in. Skills that want an independent opinion call a CLI other than the one you are running in.
+- **Models.** Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex). The roles are in `delegate-roles.conf`.
+- **Other CLIs.** Claude and Codex are used and logged in. Gemini is installed but disabled. Skills that want an independent opinion call a CLI other than the one you are running in.
 
 ## Rules for every phase
 

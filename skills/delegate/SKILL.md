@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: "Hand a bounded task to another model through its CLI: Opus to decide, Sonnet to implement, Haiku to search, Codex to review, draft docs and propose UIs, Gemini to critique. Use when a task is cheaper or better done by a different model, or when the user says /delegate. Always try rg, fd and git yourself first."
+description: "Hand a bounded task to another model through its CLI: Opus to decide, Sonnet to implement, Haiku to search, Codex to review, draft docs and propose UIs. Use when a task is cheaper or better done by a different model, or when the user says /delegate. Always try rg, fd and git yourself first."
 ---
 
 # Delegate
@@ -19,7 +19,7 @@ Most "search" tasks need a command, not a model. Do these yourself and delegate 
 
 ## 2. Pick the role
 
-Seven roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.conf`). Adding one is a single line. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a single run.
+Six roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.conf`). Adding one is a single line. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a single run.
 
 | Role | CLI and model | Mode | Use for |
 | --- | --- | --- | --- |
@@ -27,14 +27,13 @@ Seven roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.co
 | `implement` | Claude Sonnet | write | A ticket with a check that can run. Also tests, a bug repro loop, and mechanical edits (renames, codemods, migrations: add `--model claude-haiku-5-5` and always pass `--check`). |
 | `search` | Claude Haiku | read | Reading many files, logs, diffs or threads and reporting what matters, with `file:line`. |
 | `review` | Codex | read | An independent review of a diff against the spec. `verify` uses it. |
-| `critique` | Gemini | read | An adversarial read of a spec, design or plan. Also huge inputs (a whole repo or a long log), because Gemini has a large context window. |
 | `docs` | Codex | write | Drafts of README, API and how-to text, PR descriptions and changelog entries, written to files. |
 | `ui-proposals` | Codex | write | One distinct UI direction as a static HTML mockup with notes. `design` runs several in parallel. |
 
 Rules of thumb:
 
 - Escalate up for judgment, down for volume. Match the work to the lowest model that can do it, then check the result.
-- Take a second opinion from a vendor other than the one that wrote the work: `review` or `critique` on Claude's work, a Claude role on Codex's or Gemini's. If you already run on Opus, do `decide` yourself.
+- Take a second opinion from a vendor other than the one that wrote the work: `review` on Claude's work, a Claude role on Codex's. If you already run on Opus, do `decide` yourself.
 - Do not delegate approvals, specs that need the user's answers, irreversible actions, or anything where writing the brief takes longer than the task.
 - Independent tasks can run in parallel. Each write task gets its own worktree, so they do not collide.
 
@@ -114,8 +113,8 @@ Everything else is protected and only listed. A run whose `delegate.sh` process 
 - **Without bubblewrap**, setup and check still run with a scrubbed environment and a scratch HOME, but unconfined, and Codex is refused (exit 3) unless `DELEGATE_ALLOW_UNSANDBOXED=1`, which lets it reach anything the `node` user can.
 - **Codex** runs with a scrubbed environment (no `GH_*`, no git credential helper), a throwaway `CODEX_HOME` holding only its own login (never `config.toml`, which can carry MCP servers or hooks), and its own sandbox off, because the jail confines it.
 - **Claude** has Bash disallowed in every role unless `--allow` adds a Bash rule. Claude Code auto-allows some read-only commands and `acceptEdits` auto-approves file commands such as `mv` and `rm`. Read roles get Read, Grep and Glob; write roles add Edit and Write. Whatever `--allow` adds, such as the test suite, runs with the full permissions of the `node` user and can edit and run project scripts, so keep it narrow and review the diff.
-- **Credentials for Claude and Gemini** are masked against accidents: no token variables, an empty global git config and an empty `gh` config directory, so a stray push has no credentials. A command that reads the credential files by path is not stopped. Gemini write roles auto-approve edits.
+- **Credentials for Claude** are masked against accidents: no token variables, an empty global git config and an empty `gh` config directory, so a stray push has no credentials. A command that reads the credential files by path is not stopped.
 - **The wrapper's git** uses a pinned git directory, no hooks or fsmonitor, literal pathspecs and no global or system config, and it refuses to commit if the worktree's `.git` file changed. Filters defined in the repository's own `.git/config` are still honoured.
-- **Gemini** needs headless authentication and a trusted folder. Put the key in `~/.gemini/.env` as `GEMINI_API_KEY`. `/workspace` is trusted; elsewhere, such as `/tmp`, the key is not loaded and the role exits 5 with "must specify the GEMINI_API_KEY". The role uses `gemini-3.5-flash-lite`, the only model that answered reliably on a free-tier key (the CLI default, `gemini-3-flash-preview` and `gemini-3.5-flash` returned 503 or 429, the 2.5 models 404, the Pro models have no free quota). It is a lite model, so expect a shallower critique than from Opus or Codex. When Google returns 503 or 429, retry later, pass another model with `--model`, or use a fresh Claude Opus run in place of `critique`.
+- **Gemini is disabled.** The free-tier key returned 503 or 429 for every model except the lite ones, so the `critique` role is commented out in the roles file. The CLI, its config volume and the firewall entries are still installed. To re-enable it, uncomment the line, put the key in `~/.gemini/.env` as `GEMINI_API_KEY` and rebuild. For a critique of a spec or design, use `review` (Codex) or a fresh Opus run with the `decide` role.
 - Model names go stale. If a call fails on an unknown model, update the roles file or pass `--model`. After a rebuild, run `images/delegate-smoke.sh` to catch renamed flags.
 - Delegates start with no memory of this session. Anything you do not put in the brief does not exist for them.
