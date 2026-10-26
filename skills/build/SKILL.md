@@ -44,13 +44,16 @@ A good test checks behavior through the public interface, so a refactor that kee
 
 Check each unit before starting the next. A break caught at the unit that caused it is cheap to find, and a break found after a batch is buried. In a sweep or a run of similar edits, bracket each change with the check: known-good state, one change, run the check, continue. Order commits so the sequence reads as an argument, for example the failing test first, then the fix. Subtract before you add: remove dead code and redundant checks before building on top of them.
 
+When you change files with a script, assert that each replacement matched, or use the Edit tool, which fails when it does not. A formatter that realigns code makes a replacement miss without any error. A script you will run more than once, such as a browser check or a proof script, belongs in the repository (`e2e/`, `scripts/` or the feature's `evidence/`), not in `/tmp` or the scratchpad, because a rebuild removes both.
+
 ### Finish
 
 1. Confirm every acceptance criterion holds and the suite is green.
 2. If `STATUS.md` says `Commits: allowed`, commit on the current branch with a message that names the ticket. If it records nothing, ask once and write the answer to `STATUS.md` (or, for work without a feature directory, just remember it for the session). `Commits: ask` and `Commits: none` both mean do not commit: leave the changes in the working tree and say so, and `verify` will diff the working tree.
 3. Append to the ticket's `## Notes`: what you did, decisions made, surprises, commit hashes. Set `Status: resolved`. With no ticket and no feature directory (trivial and small work), skip the ticket and `STATUS.md` bookkeeping and report the edit and the check result in your reply.
 4. If building contradicts the spec, design or contract, stop. Agree the change with the user, update that document, and record it in `.scratch/<feature-slug>/changes.md` with the date, what changed and why. If the contract changed, update the tickets on both sides.
-5. If context is filling up, run `handoff`. Then run `verify`.
+5. For a feature that crosses a security boundary or uses concurrency, run the independent review from `verify` step 3 as soon as the backend slice is complete, before you build the layers that depend on it. Fixing a contract wording after the UI exists costs more than fixing it before. `verify` then reviews what is left.
+6. If context is filling up, run `handoff`. Then run `verify`.
 
 ## Whole graph
 
@@ -106,7 +109,7 @@ If a design assumption proves wrong while merging, record it in `changes.md`, st
 ### 4. Finish
 
 1. When every ticket is `resolved`, run the full suite on the integration branch.
-2. Run `verify` on the integration branch. Fix the findings in one implementer run and check again.
+2. Run `verify` on the integration branch. For a feature that crosses a security boundary or uses concurrency, the independent review should already have run when the backend tickets were merged. Fix the findings in one implementer run and check again.
 3. Update `STATUS.md` and `orchestration.md`, and note anything left unresolved.
 4. Remove each delegate worktree and delete its branch. Use `git worktree remove --force <path>`, because setup leaves untracked files such as `node_modules` that make a plain remove refuse. Then `git worktree prune`. Tickets that failed keep their worktrees until you have read them.
 5. Report the integration branch, the suite result, the tickets that needed help, and the cost drivers such as retries and escalations. Do not merge into the main branch, push, or open a pull request unless the user asks.

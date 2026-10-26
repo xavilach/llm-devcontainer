@@ -16,6 +16,7 @@ Turn the spec and design into tickets that each finish in a verifiable state. Me
 - Each slice is a tracer bullet. It cuts a narrow but complete path through every layer (schema, API, UI, tests), not a horizontal layer. Two kinds of ticket are layer tickets by design: the contract ticket, and the UI-only and API-only tickets that build against the contract in parallel. Each of those must still be demoable on its own against stubs, and a vertical slice later joins them.
 - Each slice can be demoed or verified on its own, and fits in one fresh context window.
 - Every requirement ID in the spec is covered by at least one ticket, and every ticket cites the IDs it covers.
+- When the project targets more than one OS, the CI ticket comes right after the contract and scaffold ticket, and it runs the tests on every target. Compiling for the other OS does not test it. Problems that only show on another OS then appear in the first tickets, not in the last.
 - For a UI feature, the first ticket fixes the contract: schema, stubs or mocks, and contract tests. UI and backend tickets then depend on it and can run in parallel. Vertical slices that join both sides come after.
 - Do any prefactoring first. Make the change easy, then make the easy change.
 - Give each ticket a `Touches:` line naming the modules it will change (module names, not file paths). `build` uses it to decide which tickets can run at the same time.
