@@ -2,19 +2,6 @@
 
 This repository is intended to be added as the **`.devcontainer` submodule** of any Git project. Its root must contain `devcontainer.json` (NOT `.devcontainer/devcontainer.json` inside this repo).
 
-## 0. Publish this repository once
-
-Create an empty GitHub repository, e.g. `YOUR_USERNAME/llm-devcontainer`, then from a folder containing these files:
-
-```bash
-git init
-git add devcontainer.json images/Dockerfile README.md
-git commit -m 'Reusable AI devcontainer'
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/llm-devcontainer.git
-git push -u origin main
-```
-
 ## 1a. New project (run on WSL2 Ubuntu)
 
 ```bash
