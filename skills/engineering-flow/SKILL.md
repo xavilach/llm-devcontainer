@@ -91,7 +91,7 @@ When the work has a user interface, the UI and the rest are decided together. If
 This devcontainer fixes the project setup. Skills never ask the user to configure any of it.
 
 - **Commands.** Take setup, build, typecheck and test commands from the repo's `AGENTS.md` or `CLAUDE.md`, then from its manifest files. If neither says, ask once and write the answer to `STATUS.md`.
-- **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search.
+- **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search. Stop a process by its id: `pkill -f` also matches the shell that runs it and ends your own command. If a download fails with `no route to host` for an allowed domain, run `sudo /usr/local/bin/init-firewall.sh` to re-resolve the allowlist.
 - **Models.** Whether to spawn at all is decided by "Subagents and delegation" above. Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex), `critique` (Gemini). The roles are in `delegate-roles.conf`.
 - **Other CLIs.** Claude, Codex and Gemini are installed and logged in. Skills that want an independent opinion call a CLI other than the one you are running in.
 

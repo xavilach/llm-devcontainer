@@ -89,6 +89,7 @@ The project records the selected submodule commit, not an automatically moving b
 
 - Outbound traffic is **default-deny**. `init-firewall.sh` runs on every start and allows only DNS, loopback, the Docker host network, GitHub's published ranges and the hostnames in `images/allowed-domains.txt`. IPv6 is blocked. Add a hostname to that file and rebuild if a tool needs it.
 - The container needs `--cap-add=NET_ADMIN --cap-add=NET_RAW` and runs with `seccomp-userns.json` (both set in `runArgs`). The profile is Docker's default plus the namespace and mount syscalls that bubblewrap needs, so `delegate.sh` can jail delegates. The cost is a wider kernel attack surface (user namespaces); no capability is added. An invalid profile stops the container starting.
+- If a tool fails with `no route to host` for a domain on the allowlist, after a rebuild or a long session, the address of that host has changed since the firewall started. The firewall resolves each hostname once per run, and hosts such as `proxy.golang.org` change address over hours. Run `sudo /usr/local/bin/init-firewall.sh`, which `node` may run, to resolve the list again.
 - `node` has **no general sudo**: it may only run `init-firewall.sh` and `fix-volume-perms.sh`. To install a system package, add it to the Dockerfile and rebuild.
 - Allowlisted hostnames are resolved to IPs at start; CDN-backed hosts whose IPs rotate may need a container restart.
 
