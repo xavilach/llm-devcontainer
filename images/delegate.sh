@@ -221,12 +221,25 @@ if [ "$mode" = write ]; then
   gitdir=$(git -C "$workdir" rev-parse --absolute-git-dir) || die 10 "cannot find the worktree git directory"
   gitfile=$(cat "$workdir/.git")
 fi
+wgit_filemode=true
 wgit() {
   GIT_DIR="$gitdir" GIT_WORK_TREE="$workdir" GIT_LITERAL_PATHSPECS="${WGIT_LITERAL:-1}" \
     GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
-    git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.fileMode=true \
+    git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.fileMode="$wgit_filemode" \
         -c user.name="${uname:-delegate}" -c user.email="${uemail:-delegate@localhost}" "$@"
 }
+# Mode changes count as changes (a delegate that makes a file executable is noticed), unless the
+# filesystem does not keep exec bits, as on a Windows or WSL bind mount. There a fresh worktree
+# already shows files as mode-changed before the delegate runs, and every one would look like a
+# change outside --scope. Probe once, before anything runs: if a fresh worktree differs by mode
+# alone, ignore modes for this run. Otherwise keep the strict check.
+if [ "$mode" = write ]; then
+  modeonly=$(comm -23 <(wgit diff --name-only | sort) <(wgit -c core.fileMode=false diff --name-only | sort))
+  if [ -n "$modeonly" ]; then
+    wgit_filemode=false
+    echo "delegate: this filesystem does not keep file modes; mode changes are ignored for this run" >&2
+  fi
+fi
 file_sig() { # content hash and mode of a path in the work tree
   printf '%s:%s' "$(git hash-object --no-filters -- "$workdir/$1" 2>/dev/null || echo MISSING)" \
     "$(stat -c %a "$workdir/$1" 2>/dev/null || echo 0)"
