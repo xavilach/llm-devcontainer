@@ -4,6 +4,7 @@
 # flag would turn every delegation into exit 5. Add --live to also send one tiny task to each CLI.
 # Known-good versions when this was written: claude 2.x, codex-cli 0.164.0, gemini 0.65.0.
 set -uo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
 fail=0
 need() { # $1 = description, $2... = command
   local what=$1; shift
@@ -21,6 +22,7 @@ need "codex exec --sandbox / --ephemeral / --output-last-message / --model" \
 need "gemini -p / --approval-mode plan / --model" \
   bash -c "gemini --help 2>&1 | grep -q -- '--prompt' && gemini --help 2>&1 | grep -q 'approval-mode' && gemini --help 2>&1 | grep -q -- '--model'"
 need "bwrap can create a user and PID namespace" bwrap --ro-bind / / --unshare-user --unshare-pid true
+need "delegate.sh --gc runs a dry run in a git repo" bash -c 't=$(mktemp -d) && cd "$t" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m i && mkdir -p .scratch/delegations && "$0" --gc | grep -q "Dry run"; rc=$?; rm -rf "$t"; exit $rc' "$here/delegate.sh"
 need "git worktree add --detach, and --pathspec-from-file reset" bash -c '
   t=$(mktemp -d) && cd "$t" && git init -q && git -c user.email=t@t -c user.name=t commit -q --allow-empty -m i &&
   git worktree add -q --detach "$t/w" HEAD && echo x > "$t/w/f" && git -C "$t/w" add f &&
@@ -31,7 +33,7 @@ if [ "${1:-}" = --live ]; then
   top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "FAIL  --live needs a git repo"; exit 1; }
   brief=$(mktemp "$top/.scratch-smoke.XXXXXX.md"); echo "Reply with exactly: ok" > "$brief"
   for role in search review critique; do
-    if timeout 200 "$(dirname "$0")/delegate.sh" "$role" "$brief" --timeout 150 >/dev/null 2>&1; then echo "ok    live $role"; else echo "FAIL  live $role (see .scratch/delegations/)"; fail=1; fi
+    if timeout 200 "$here/delegate.sh" "$role" "$brief" --timeout 150 >/dev/null 2>&1; then echo "ok    live $role"; else echo "FAIL  live $role (see .scratch/delegations/)"; fail=1; fi
   done
   rm -f "$brief"
 fi

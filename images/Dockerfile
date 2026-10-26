@@ -48,15 +48,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends bubblewrap \
 
 # 11 — Root-owned helper scripts and the outbound domain allowlist.
 # install-skills.sh and init-workspace.sh run as `node` (not via sudo) on each start: the first installs
-# the skills copied below, the second keeps .scratch/ out of git. delegate.sh is the delegation helper.
+# the skills copied below, the second keeps .scratch/ out of git. delegate.sh is the delegation helper and delegate-gc.sh removes its old runs.
 # Edit images/allowed-domains.txt to permit more destinations, then rebuild.
-COPY images/init-firewall.sh images/fix-volume-perms.sh images/install-skills.sh images/delegate.sh \
+COPY images/init-firewall.sh images/fix-volume-perms.sh images/install-skills.sh images/delegate.sh images/delegate-gc.sh \
      images/init-workspace.sh /usr/local/bin/
 COPY images/allowed-domains.txt /etc/firewall-allowed-domains.txt
 COPY images/delegate-roles.conf /etc/delegate-roles.conf
 COPY skills /usr/local/share/agent-skills
 RUN chmod 0755 /usr/local/bin/init-firewall.sh /usr/local/bin/fix-volume-perms.sh \
-    /usr/local/bin/install-skills.sh /usr/local/bin/delegate.sh \
+    /usr/local/bin/install-skills.sh /usr/local/bin/delegate.sh /usr/local/bin/delegate-gc.sh \
     /usr/local/bin/init-workspace.sh \
     && chmod 0644 /etc/firewall-allowed-domains.txt /etc/delegate-roles.conf \
     && chmod -R a+rX /usr/local/share/agent-skills

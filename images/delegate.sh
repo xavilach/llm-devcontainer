@@ -2,6 +2,7 @@
 # Hand a bounded task to another model through its CLI, in headless mode.
 #
 # Usage: delegate.sh <role> <brief-file> [options]
+#        delegate.sh --gc [--older-than DAYS] [--apply] [--include-unmerged]   (remove old runs; see delegate-gc.sh)
 #   --input <path>       copy a file or directory into the delegate's working tree at the same
 #                        relative path (repeatable). Needed for .scratch/ files, which git ignores,
 #                        and for files with uncommitted changes. Inputs are references: they are
@@ -37,6 +38,9 @@ CONF=${DELEGATE_CONF:-/etc/delegate-roles.conf}
 BWRAP=${DELEGATE_BWRAP:-bwrap}
 usage() { sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2; exit 2; }
 die() { echo "delegate: $2" >&2; exit "$1"; }
+
+# "delegate.sh --gc ..." cleans up old runs; the work is done by delegate-gc.sh.
+if [ "${1:-}" = --gc ]; then shift; exec "$(dirname "$(readlink -f "$0")")/delegate-gc.sh" "$@"; fi
 
 [ $# -ge 2 ] || usage
 role=$1 brief=$2; shift 2

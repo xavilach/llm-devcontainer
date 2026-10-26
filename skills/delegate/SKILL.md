@@ -82,8 +82,20 @@ A delegate's report is a claim, not evidence.
 - For `implement`, read the diff with `git diff HEAD...delegate/<id>`, run the real checks, then merge or cherry-pick.
 - For `docs`, run every command and snippet it wrote, check each claim against the code, then run `unslop`. A model drafting docs only knows what it read.
 - Look at the diff stat for stray files such as caches or build output.
-- Clean up: `git worktree remove --force <path>` (setup leaves untracked files such as `node_modules` that make a plain remove refuse), `git branch -D delegate/<id>`, then `git worktree prune`.
+- Clean up one run by hand: `git worktree remove --force <path>` (setup leaves untracked files such as `node_modules` that make a plain remove refuse), `git branch -D delegate/<id>`, then `git worktree prune`.
 - Then continue with `verify` as usual. Delegation does not replace it.
+
+## 6. Clean up old runs
+
+Runs pile up in `.scratch/delegations/`: read runs keep their brief and result, write runs keep a worktree and a `delegate/<id>` branch. Remove the old ones with:
+
+```
+delegate.sh --gc                                   # report only, deletes nothing
+delegate.sh --gc --older-than 14 --apply           # delete the safe runs older than 14 days
+delegate.sh --gc --apply --include-unmerged        # also discard runs with unmerged work
+```
+
+A run is removable when it is older than the limit (7 days by default, and never under one hour) and its work is safe: it has no branch (a read run), its branch is merged into `HEAD` or was never committed, or its commits change nothing. A run with unmerged commits is protected and only listed. A run whose `delegate.sh` process is still alive is skipped. Squash-merged and rebase-merged branches look unmerged, so they stay protected: remove them with `--include-unmerged` once you have checked the merge. Only valid run directories in this repo's `.scratch/delegations/` are touched, and symlinks are ignored. Do not run it with `--include-unmerged` unless you have decided to throw that work away.
 
 ## Limits
 

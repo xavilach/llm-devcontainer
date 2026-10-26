@@ -199,6 +199,84 @@ else
   echo "skip  Codex jail tests: bubblewrap does not work here"
 fi
 
+echo "== delegate-gc"
+GC="$here/delegate-gc.sh"; gcn=0
+now=$(date +%s); old=$((now + 10 * 86400))
+# Build a fresh repo holding one run of each kind, created by the real delegate.sh with the stub CLIs.
+gc_fixture() {
+  gcn=$((gcn + 1)); gcrepo="$T/gc$gcn"; git init -q "$gcrepo"; cd "$gcrepo" || exit 1
+  git config user.email t@t; git config user.name t; git config core.fileMode true
+  echo x > a.txt; git add -A; git commit -qm base; echo '.scratch/' >> .git/info/exclude
+  gcid() { basename "$(ls -d "$gcrepo"/.scratch/delegations/*"$1"* | tail -1)"; }
+  brief "STUB:write m.txt merged"; run w "$T/brief.md" --tag merged;   id_merged=$(gcid merged)
+  brief "STUB:write u.txt unmerged"; run w "$T/brief.md" --tag unmerged; id_unmerged=$(gcid unmerged)
+  brief "nothing to do"; run w "$T/brief.md" --tag nochange;           id_nochange=$(gcid nochange)
+  brief "STUB:fail"; run w "$T/brief.md" --tag nocommit;               id_nocommit=$(gcid nocommit)
+  brief "just read"; run r "$T/brief.md" --tag readrun;                id_read=$(gcid readrun)
+  git merge -q --no-ff -m "merge delegate work" "delegate/$id_merged"
+  mkdir -p .scratch/delegations/not-a-run .scratch/delegations/20260101-000000-nopid
+}
+gcrun() { out=$(cd "$gcrepo" && DELEGATE_GC_NOW="${CLK:-$old}" "$GC" "$@" 2>&1); rc=$?; }
+exists() { [ -e "$gcrepo/.scratch/delegations/$1" ] && echo yes || echo no; }
+has_branch() { git -C "$gcrepo" show-ref --verify --quiet "refs/heads/delegate/$1" && echo yes || echo no; }
+
+gc_fixture
+gcrun; expect "no options is a dry run, exit 0" 0 $rc
+contains "dry run says nothing was deleted" "$out" "Dry run"
+expect "dry run removed nothing" yes "$(exists "$id_merged")"
+contains "merged run listed as removable" "$(printf '%s' "$out" | grep "$id_merged")" "remove"
+contains "read run listed as removable" "$(printf '%s' "$out" | grep "$id_read")" "remove"
+contains "never-committed run listed as removable" "$(printf '%s' "$out" | grep "$id_nocommit")" "remove"
+contains "run whose commits change nothing listed as removable" "$(printf '%s' "$out" | grep "$id_nochange")" "remove"
+contains "unmerged run listed as protected" "$(printf '%s' "$out" | grep "$id_unmerged")" "protected"
+lacks "invalid directory names are ignored" "$out" "not-a-run"
+contains "summary has counts" "$out" "4 removable"
+contains "summary says what would be freed" "$out" "would free"
+gcrun --include-unmerged; expect "--include-unmerged alone is still a dry run" 0 $rc
+expect "--include-unmerged without --apply removes nothing" yes "$(exists "$id_unmerged")"
+gcrun --apply; expect "--apply exit 0" 0 $rc
+for k in merged read nocommit nochange; do eval "i=\$id_$k"; expect "$k run directory removed" no "$(exists "$i")"; expect "$k run branch removed" no "$(has_branch "$i")"; done
+expect "unmerged run directory kept" yes "$(exists "$id_unmerged")"
+expect "unmerged run branch kept" yes "$(has_branch "$id_unmerged")"
+expect "decoy directory kept" yes "$(exists not-a-run)"
+expect "no stale worktree entries left for removed runs" 0 "$(git -C "$gcrepo" worktree list | grep -c "$id_merged\|$id_nochange\|$id_nocommit")"
+gcrun --apply --include-unmerged; expect "--apply --include-unmerged exit 0" 0 $rc
+expect "unmerged run removed only with both flags" no "$(exists "$id_unmerged")"
+expect "its branch is gone too" no "$(has_branch "$id_unmerged")"
+expect "only the main worktree is left" 1 "$(git -C "$gcrepo" worktree list | wc -l)"
+
+gc_fixture
+CLK=$now gcrun --apply; expect "runs younger than the age limit are skipped" yes "$(exists "$id_merged")"
+contains "report says why" "$out" "younger than"
+CLK=$((now + 1800)) gcrun --older-than 0 --apply; expect "the one-hour floor beats --older-than 0" yes "$(exists "$id_merged")"
+CLK=$((now + 7200)) gcrun --older-than 0 --apply; expect "past the floor, --older-than 0 removes" no "$(exists "$id_merged")"
+
+gc_fixture
+# A live delegate.sh process: a run directory whose pid belongs to one must be left alone.
+bash -c 'exec -a delegate.sh sleep 60' & livepid=$!
+livedir="$(date -d "-3 days" +%Y%m%d-%H%M%S)-docs-$livepid"; mkdir -p "$gcrepo/.scratch/delegations/$livedir"
+deadpid=999999; deaddir="$(date -d "-3 days" +%Y%m%d-%H%M%S)-docs-$deadpid"; mkdir -p "$gcrepo/.scratch/delegations/$deaddir"
+CLK=$((now + 86400)) gcrun --older-than 1 --apply
+expect "a run with a live delegate.sh process is kept" yes "$(exists "$livedir")"
+expect "an old run with a dead pid is removed" no "$(exists "$deaddir")"
+kill $livepid 2>/dev/null; wait $livepid 2>/dev/null
+
+gc_fixture
+mkdir -p "$T/victim-dir"; echo keep > "$T/victim-dir/f"; linkid="$(date -d "-3 days" +%Y%m%d-%H%M%S)-docs-$deadpid"
+ln -s "$T/victim-dir" "$gcrepo/.scratch/delegations/$linkid"
+gcrun --apply; expect "a symlinked run entry is ignored" yes "$([ -f "$T/victim-dir/f" ] && echo yes || echo no)"
+expect "the symlink itself is left" yes "$([ -L "$gcrepo/.scratch/delegations/$linkid" ] && echo yes || echo no)"
+
+gcrun --bogus; expect "unknown option -> 2" 2 $rc
+gcrun --older-than abc; expect "non-numeric --older-than -> 2" 2 $rc
+gcrun --older-than; expect "--older-than without a value -> 2" 2 $rc
+contains "usage message printed" "$out" "usage"
+gc_fixture
+out=$(cd "$gcrepo" && DELEGATE_GC_NOW=$old "$D" --gc 2>&1); rc=$?
+expect "delegate.sh --gc hands over" 0 $rc
+contains "delegate.sh --gc runs the gc report" "$out" "Dry run"
+cd "$repo" || exit 1
+
 echo "== parallel runs"
 brief "STUB:write p.txt 1"
 ( "$D" w "$T/brief.md" --tag par1 > "$T/p1.log" 2>&1; echo $? > "$T/p1.rc" ) &

@@ -196,7 +196,7 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 | `docs` | Codex | write | docs, PR text, changelog entries |
 | `ui-proposals` | Codex | write | UI mockups for the `design` phase |
 
-Write roles work in a git worktree built from the committed `HEAD`. Because `.scratch/` is git-ignored, the files a delegate needs are copied in with `--input`. Setup and check commands, and Codex itself, run in a bubblewrap jail (read-only root, empty `$HOME`, one writable directory per run). The network stays open and the repo is readable inside it, so keep secrets out of the repo; Claude roles have no shell unless `--allow` grants one. Gemini roles need `GEMINI_API_KEY` in `~/.gemini/.env`. A delegate's report is a claim, so the agent checks it before using it. The `delegate` skill has the options, exit codes and the full list of limits.
+Write roles work in a git worktree built from the committed `HEAD`. Because `.scratch/` is git-ignored, the files a delegate needs are copied in with `--input`. Setup and check commands, and Codex itself, run in a bubblewrap jail (read-only root, empty `$HOME`, one writable directory per run). The network stays open and the repo is readable inside it, so keep secrets out of the repo; Claude roles have no shell unless `--allow` grants one. Gemini roles need `GEMINI_API_KEY` in `~/.gemini/.env`. A delegate's report is a claim, so the agent checks it before using it. Old runs accumulate; `delegate.sh --gc` lists the safe ones to remove and `--apply` removes them, protecting anything unmerged. The `delegate` skill has the options, exit codes, cleanup and the full list of limits.
 
 ### How the skills are installed
 
