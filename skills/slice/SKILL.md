@@ -6,7 +6,7 @@ description: "Phase 3 of engineering-flow. Break the spec into vertical tracer-b
 # Slice
 
 **Input:** `spec.md`, `design.md`, and for UI work the contract at `docs/project/contracts/<feature-slug>.md`.
-**Output:** `.scratch/<feature-slug>/issues/NN-<slug>.md`, `issues/README.md` (ticket list and a Mermaid dependency graph), `STATUS.md`.
+**Output:** `.scratch/<feature-slug>/issues/NN-<slug>.md`, `issues/README.md` (the ticket list with each ticket's status and `Blocked by:`), `STATUS.md`.
 **Gate:** the user approved the breakdown and the blocking edges, and no requirement ID is uncovered.
 
 Turn the spec and design into tickets that each finish in a verifiable state. Medium work may be a single ticket.
@@ -50,4 +50,4 @@ The end-to-end behavior this ticket makes work, from the user's point of view.
 Appended by `build`: decisions, surprises, links to commits.
 ```
 
-Work the frontier, which is every ticket whose blockers are all `resolved`. For a linear chain that is top to bottom.
+Work the frontier, which is every ticket with `Status: ready-for-agent` whose blockers are all `resolved` (`build` defines the status transitions). For a linear chain that is top to bottom.

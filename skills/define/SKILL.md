@@ -6,7 +6,7 @@ description: "Phase 0 of engineering-flow. Define the project before building fe
 # Define
 
 **Input:** your idea, plus any existing README, docs and code.
-**Output:** `docs/project/` (`project.md`, `requirements.md`, `journeys.md` for UI, `roadmap.md`, `decisions.md`), `GLOSSARY.md`, ADRs in `docs/adr/`. All committed.
+**Output:** `docs/project/` (`project.md`, `requirements.md`, `journeys.md` for UI, `roadmap.md`, `decisions.md`), `GLOSSARY.md`, ADRs in `docs/adr/`. Committed when commits are authorized, otherwise left in the working tree.
 **Gate:** you approved the project, requirements and roadmap, every journey is covered, and no UI or backend clash is open.
 
 Fix what the project is before any feature is specced. This matters most when the project has a UI, because the UI and the rest must be decided together.
@@ -34,6 +34,8 @@ If the project has a UI, also settle these in the same rounds, not later:
 - Real-time needs, data freshness, and what the UI may cache.
 
 ## 3. Write the outputs
+
+Before the first commit, ask once whether commits are allowed on this branch and record the answer as `Commits: <allowed|ask|none>` in `docs/project/decisions.md` (and in `STATUS.md` once a feature exists). Without a yes, leave the files uncommitted and say so.
 
 - `docs/project/project.md`: purpose, users, scope, non-goals, constraints, quality targets, success measures, risks.
 - `docs/project/requirements.md`: one list with IDs (`REQ-001`). Each line has a layer tag (`ui`, `api`, `data`, `ops`, `cross`), a priority, and a testable statement. A UI need and the backend need it implies are written together and cross-referenced.

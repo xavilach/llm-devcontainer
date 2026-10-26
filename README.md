@@ -87,7 +87,7 @@ The project records the selected submodule commit, not an automatically moving b
 ## 5. Security: firewall and restricted sudo
 
 - Outbound traffic is **default-deny**. `init-firewall.sh` runs on every start and allows only DNS, loopback, the Docker host network, GitHub's published ranges and the hostnames in `images/allowed-domains.txt`. IPv6 is blocked. Add a hostname to that file and rebuild if a tool needs it.
-- The container needs `--cap-add=NET_ADMIN --cap-add=NET_RAW` (set in `runArgs`). It also runs with `seccomp-userns.json`, Docker's default seccomp profile plus the namespace and mount syscalls that bubblewrap needs. That lets Codex use its filesystem sandbox, at the cost of a wider kernel attack surface (user namespaces) inside the container. No capability is added. If the profile is invalid the container will not start, so rebuild after fixing it.
+- The container needs `--cap-add=NET_ADMIN --cap-add=NET_RAW` and runs with `seccomp-userns.json` (both set in `runArgs`). The profile is Docker's default plus the namespace and mount syscalls that bubblewrap needs, so `delegate.sh` can jail delegates. The cost is a wider kernel attack surface (user namespaces); no capability is added. An invalid profile stops the container starting.
 - `node` has **no general sudo**: it may only run `init-firewall.sh` and `fix-volume-perms.sh`. To install a system package, add it to the Dockerfile and rebuild.
 - Allowlisted hostnames are resolved to IPs at start; CDN-backed hosts whose IPs rotate may need a container restart.
 
@@ -154,7 +154,7 @@ The UI and the backend are decided together so their requirements cannot clash.
 
 A clash is fixed by changing the requirement, the UI or the API together, and the fix is logged in the feature's `decisions.md`. The clash check needs evidence for each row, including a script that validates the mockup's sample data against the contract schemas, so the UI cannot be approved on data the backend cannot supply.
 
-**UI proposal rounds.** After the contract skeleton exists, `design` asks Codex (the OpenAI CLI) for several structurally different UI directions, three by default, each a static HTML mockup with notes on its trade-offs. They are written to `.scratch/<feature>/ui/round-NN/proposal-<letter>/`. Open the `index.html` files from your host folder and compare them with the `README.md` in the round directory. For each round you choose to:
+**UI proposal rounds.** After the contract skeleton exists, `design` asks Codex (the OpenAI CLI) for several structurally different UI directions (three for a new product look, one or two for a single screen or a Medium-path feature), each a static HTML mockup with notes on its trade-offs. They are produced in each delegate's worktree and collected into `.scratch/<feature>/ui/round-NN/proposal-<letter>/`. Open the `index.html` files from your host folder and compare them with the `README.md` in the round directory. For each round you choose to:
 
 - accept one proposal;
 - take one as the base for another round, saying what to keep and what to change;
@@ -184,20 +184,19 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 
 ### Models and delegation
 
-`/delegate` runs a bounded task on another model through its CLI, headless. `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) maps 15 roles to a CLI, a model and a mode. Write roles work in an isolated git worktree built from the committed `HEAD`, and `.scratch/` inputs are copied in explicitly. Add a role with one line, edit models, and rebuild.
+`/delegate` runs a bounded task on another model through its CLI, headless. Seven roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
 
-| Group | Roles | Model |
-| --- | --- | --- |
-| Judgment (advises only) | `decide`, `design`, `security` | Claude Opus |
-| Building | `implement`, `tests`, `diagnose` | Claude Sonnet |
-| Mechanical edits | `mechanical` | Claude Haiku |
-| Reading | `search`, `summarize` | Claude Haiku |
-| Reading, huge input | `longctx` | Gemini |
-| Second opinion | `review`, `critique` | Codex, Gemini |
-| UI design | `ui-proposals` | Codex |
-| Writing | `docs`, `writeup` | Codex, Claude Haiku |
+| Role | Model | Mode | Use for |
+| --- | --- | --- | --- |
+| `decide` | Claude Opus | read | a hard choice, a design sketch, a blast-radius or security read |
+| `implement` | Claude Sonnet | write | tickets, tests, bug repro loops; mechanical edits with `--model claude-haiku-5-5` |
+| `search` | Claude Haiku | read | reading many files, logs or diffs |
+| `review` | Codex | read | second opinion on a diff |
+| `critique` | Gemini | read | second opinion on a spec or design; huge inputs |
+| `docs` | Codex | write | docs, PR text, changelog entries |
+| `ui-proposals` | Codex | write | UI mockups for the `design` phase |
 
-Gemini roles (`critique`, `longctx`) use `gemini-3-flash-preview` and need `GEMINI_API_KEY` in `~/.gemini/.env`. Try `rg`, `fd` and `git` yourself before delegating a search. A delegate's report is a claim: the agent checks it before using it. Codex runs in its bubblewrap sandbox: write roles can write only in their worktree, read roles nothing, and both get a scrubbed environment (no GitHub credentials, no other CLI's config). If the sandbox cannot start, `delegate.sh` prints a warning and falls back to no sandbox, where Codex can reach any file the `node` user can, so give it only tasks you would run yourself.
+Write roles work in a git worktree built from the committed `HEAD`. Because `.scratch/` is git-ignored, the files a delegate needs are copied in with `--input`. Setup and check commands, and Codex itself, run in a bubblewrap jail (read-only root, empty `$HOME`, one writable directory per run). The network stays open and the repo is readable inside it, so keep secrets out of the repo; Claude roles have no shell unless `--allow` grants one. Gemini roles need `GEMINI_API_KEY` in `~/.gemini/.env`. A delegate's report is a claim, so the agent checks it before using it. The `delegate` skill has the options, exit codes and the full list of limits.
 
 ### How the skills are installed
 

@@ -32,7 +32,7 @@ For a UI feature, also check these.
 
 ## 2. Review on two axes
 
-Use the base commit recorded in `STATUS.md` as the fixed point (or a commit, branch or `main` if none is recorded) and take the diff `git diff <fixed-point>...HEAD`. Review each axis separately, ideally in two subagents with fresh context so neither colors the other. If you cannot spawn subagents, review them one after the other.
+Use the base commit recorded in `STATUS.md` as the fixed point (or a commit, branch or `main` if none is recorded) and take the diff `git diff <fixed-point>`, which covers committed and uncommitted changes to tracked files, and add the untracked files (`git ls-files --others --exclude-standard`). Do this whatever `Commits:` says, so an uncommitted or partly committed change is never reviewed as an empty diff. Review each axis separately, ideally in two subagents with fresh context so neither colors the other. If you cannot spawn subagents, review them one after the other.
 
 **Spec.** Does the diff do what `spec.md` and the ticket ask? Report requirements that are missing or partial, behavior nobody asked for, and requirements that look done but are implemented wrong. Quote the spec line for each finding.
 
@@ -56,7 +56,7 @@ Report the two axes under separate headings and do not merge or rerank them. A c
 
 Use this for large, security-sensitive, irreversible or hard-to-test changes. A different model catches different bugs, and findings that two models raise independently are the strongest signal.
 
-Use the `delegate` skill with a role from a vendor other than the one that wrote the code: `review` (Codex) for the diff, or `critique` (Gemini) for the spec and design. Save the diff (`git diff <base commit>...HEAD > .scratch/<feature-slug>/evidence/review.diff`) and pass it with the spec: `delegate.sh review .scratch/briefs/review.md --input .scratch/<feature-slug>/evidence/review.diff --input .scratch/<feature-slug>/spec.md`. Write a brief with the intent and those paths. The `--input` flags are needed because `.scratch/` is git-ignored. A Codex read role works on a copy of the project as it is now, uncommitted changes included, but it has no spec or diff unless you pass them. Ask it to review adversarially and not to edit anything. If a CLI is unavailable, fall back to a fresh-context subagent. Then act as the lead reviewer and sort every finding into one bucket with a one-line reason.
+Use the `delegate` skill with a role from a vendor other than the one that wrote the code: `review` (Codex) for the diff, or `critique` (Gemini) for the spec and design. Save the diff (`git diff <base commit> > .scratch/<feature-slug>/evidence/review.diff`, plus the untracked files) and pass it with the spec: `delegate.sh review .scratch/briefs/review.md --input .scratch/<feature-slug>/evidence/review.diff --input .scratch/<feature-slug>/spec.md`. Write a brief with the intent and those paths. The `--input` flags are needed because `.scratch/` is git-ignored. A Codex read role works on a copy of the project as it is now, uncommitted changes included, but it has no spec or diff unless you pass them. Ask it to review adversarially and not to edit anything. If a CLI is unavailable, fall back to a fresh-context subagent. Then act as the lead reviewer and sort every finding into one bucket with a one-line reason.
 
 - **Act on.** Real defects in correctness, security or maintainability. These would block a PR.
 - **Consider.** Legitimate, but the cost may outweigh the benefit now. Put it to the user.

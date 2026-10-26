@@ -3,26 +3,40 @@
 #
 # Usage: delegate.sh <role> <brief-file> [options]
 #   --input <path>       copy a file or directory into the delegate's working tree at the same
-#                        relative path (repeatable). Needed for .scratch/ files, which git ignores.
+#                        relative path (repeatable). Needed for .scratch/ files, which git ignores,
+#                        and for files with uncommitted changes. Inputs are references: they are
+#                        never part of the delegate's commit.
 #   --setup "<cmd>"      run in the working tree before the CLI starts (for example: npm ci)
-#   --check "<cmd>"      run in the working tree after the CLI finishes; exit 4 if it fails
+#   --check "<cmd>"      run on the finished work; exit 4 if it fails. For write roles it runs in a
+#                        fresh checkout of the committed result (setup runs there again), so it
+#                        validates exactly what would be merged.
 #   --allow "<tool>"     extra tool the Claude delegate may use (repeatable), e.g. "Bash(npm test:*)"
 #   --scope <pathspec>   write roles may only change paths matching this (repeatable); exit 7 otherwise
 #   --tag <name>         name added to the run ID, such as a ticket ID
 #   --model <m>          override the model from the roles file
-#   --budget <usd>       cap spend for a Claude delegate (--max-budget-usd)
+#   --budget <usd>       spend cap, Claude only (other CLIs have none, so this exits 2 for them)
 #   --timeout <sec>      CLI time limit, default 900 (then killed 30 s later)
 #   --check-timeout <s>  limit for --setup and --check, default 600
 #
 # Roles and models come from /etc/delegate-roles.conf. Run from inside the git repo.
-# Codex uses its bubblewrap sandbox when the container allows it. Write roles work in a git worktree on branch delegate/<id>, built from the committed HEAD, and the
-# wrapper commits the result there. Read roles never change the project.
-# Exit codes: 0 ok, 2 usage, 3 CLI unavailable (do the work yourself), 4 check failed, 5 CLI failed or
-# timed out, 6 a write role changed no files, 7 changes outside --scope, 8 setup failed, 9 commit failed.
+# Write roles work in a git worktree on branch delegate/<id>, built from the HEAD that was current
+# when the run started, and the wrapper commits the result there. Read roles never change the
+# project: Claude read roles have no shell and no edit tools (unless --allow adds one), and Codex
+# runs in a jail (see below).
+#
+# Layout of .scratch/delegations/<id>/ : the wrapper owns the directory itself (brief, logs, result,
+# changed-files). Everything the delegate can write lives in jail/ (worktree, snapshot, check
+# checkout, scratch HOME, Codex login). Only jail/ is ever writable from inside the Codex jail, and
+# the wrapper never writes through a path inside it that it did not create.
+# Exit codes: 0 ok, 2 usage, 3 CLI or confinement unavailable (do the work yourself), 4 check failed,
+# 5 CLI failed or timed out, 6 a write role changed no files, 7 changes outside --scope, 8 setup
+# failed, 9 commit failed or the worktree was tampered with, 10 could not prepare the working tree.
 set -uo pipefail
 
 CONF=${DELEGATE_CONF:-/etc/delegate-roles.conf}
+BWRAP=${DELEGATE_BWRAP:-bwrap}
 usage() { sed -n '2,/^set -uo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//' >&2; exit 2; }
+die() { echo "delegate: $2" >&2; exit "$1"; }
 
 [ $# -ge 2 ] || usage
 role=$1 brief=$2; shift 2
@@ -45,76 +59,186 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
-[ -f "$brief" ] || { echo "delegate: brief not found: $brief" >&2; exit 2; }
+[ -f "$brief" ] || die 2 "brief not found: $brief"
 
 line=$(awk -F'|' -v r="$role" '$1 == r { print; exit }' "$CONF" 2>/dev/null)
-[ -n "$line" ] || { echo "delegate: unknown role '$role' (see $CONF)" >&2; exit 2; }
+[ -n "$line" ] || die 2 "unknown role '$role' (see $CONF)"
 IFS='|' read -r _ cli model mode <<< "$line"
 [ -n "$override" ] && model=$override
 
-command -v "$cli" >/dev/null || { echo "delegate: $cli is not installed; do the task yourself" >&2; exit 3; }
-top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "delegate: run inside a git repo" >&2; exit 2; }
+command -v "$cli" >/dev/null || die 3 "$cli is not installed; do the task yourself"
+top=$(git rev-parse --show-toplevel 2>/dev/null) || die 2 "run inside a git repo"
+if [ "$cli" != claude ]; then
+  [ -z "$budget" ] || die 2 "--budget is only enforced for Claude; $role uses $cli"
+  [ -z "$extra" ] || echo "delegate: warning: --allow only applies to Claude; ignored for $cli" >&2
+fi
+
+# Validate inputs before creating anything.
+input_rels=()
+for p in "${inputs[@]}"; do
+  abs=$(realpath -m "$p")
+  case $abs in "$top"/*) ;; *) die 2 "--input must be inside the repo: $p" ;; esac
+  [ -e "$abs" ] || die 2 "--input not found: $p"
+  input_rels+=("${abs#"$top"/}")
+done
 
 tag=${tag//[^A-Za-z0-9._-]/_}
 id="$(date +%Y%m%d-%H%M%S)-$role${tag:+-$tag}-$$"
 dir="$top/.scratch/delegations/$id"
-mkdir -p "$dir"
-cp "$brief" "$dir/brief.md"
+jdir="$dir/jail"
+home="$jdir/home" tmp="$jdir/tmp"
+mkdir -p "$home" "$tmp" || die 10 "cannot create $dir"
+cp "$brief" "$dir/brief.md" || die 10 "cannot copy the brief"
+out="$dir/result.md"
 
-throwaway="" codexhome=""
+throwaway="" checktree="" keep_worktree=""
 cleanup() {
+  local rc=$?
   [ -n "$throwaway" ] && git -C "$top" worktree remove --force "$throwaway" 2>/dev/null
-  [ -n "$codexhome" ] && rm -rf "$codexhome"
+  [ -n "$checktree" ] && git -C "$top" worktree remove --force "$checktree" 2>/dev/null
+  rm -rf "$jdir/codex-home"
+  if [ $rc -ne 0 ] && [ -n "$keep_worktree" ]; then
+    echo "delegate: kept $keep_worktree and branch delegate/$id for inspection. To discard:" >&2
+    echo "  git -C '$top' worktree remove --force '$keep_worktree' && git -C '$top' branch -D delegate/$id" >&2
+  fi
   return 0
 }
 trap cleanup EXIT
 
+# --- The jail ---
+# Anything that runs code the delegate may have written (Codex itself, and the --setup and --check
+# commands run on its result) goes through this jail whenever bubblewrap works. The root is
+# read-only. $HOME, /tmp, /run, the shell history, and the .scratch directory of the project and of
+# every ancestor (other delegations and their copied logins) are replaced by empty directories.
+# The only writable path is this run's jail/ directory. The network stays open because the CLIs need
+# their APIs; the container firewall applies. Codex requires the jail; the other CLIs use it for
+# setup and check only. Without bubblewrap those commands still run with a scrubbed environment.
+jail=()
+if command -v "$BWRAP" >/dev/null && "$BWRAP" --ro-bind / / --unshare-user --unshare-pid true >/dev/null 2>&1; then
+  case "$HOME/" in
+    "$top"/*)
+      # The project contains $HOME, so masking $HOME would also hide the project.
+      [ "$cli" = codex ] && die 3 "the project root contains \$HOME, so the jail cannot hide your credentials" ;;
+    *)
+      jail=("$BWRAP" --die-with-parent --new-session --unshare-pid --unshare-ipc --ro-bind / / --dev /dev --proc /proc
+            --tmpfs /tmp --tmpfs /run --tmpfs "$HOME")
+      [ -d /commandhistory ] && jail+=(--tmpfs /commandhistory)
+      # Order matters: masks first, then the project, then hide its .scratch, then expose this run.
+      anc=$(dirname "$top")
+      while [ "$anc" != / ] && [ "$anc" != . ]; do
+        [ -d "$anc/.scratch" ] && jail+=(--tmpfs "$anc/.scratch")
+        anc=$(dirname "$anc")
+      done
+      jail+=(--ro-bind "$top" "$top" --tmpfs "$top/.scratch" --bind "$jdir" "$jdir")
+      [ "$cli" = codex ] && echo "delegate: codex jailed by bubblewrap (read-only root, \$HOME hidden, writable: $jdir)" ;;
+  esac
+elif [ "$cli" = codex ]; then
+  if [ "${DELEGATE_ALLOW_UNSANDBOXED:-}" = 1 ]; then
+    echo "delegate: warning: bubblewrap unavailable, Codex runs unconfined (DELEGATE_ALLOW_UNSANDBOXED=1)" >&2
+  else
+    die 3 "bubblewrap is unavailable, so Codex would run unconfined. Rebuild the container, or set DELEGATE_ALLOW_UNSANDBOXED=1 to accept that."
+  fi
+fi
+# Run "$2" with bash in directory "$1". Inside the jail's tree it uses the jail when there is one,
+# and always a scratch HOME and a scrubbed environment (no GH_*, no git credential helper).
+run_in() {
+  case "$1" in
+    "$jdir"/*)
+      if [ ${#jail[@]} -gt 0 ]; then
+        timeout -k 10 "$check_timeout" "${jail[@]}" --chdir "$1" env -i PATH="$PATH" HOME="$home" TMPDIR="$tmp" \
+          LANG=C.UTF-8 TERM=dumb bash -c "$2"
+      else
+        (cd "$1" && timeout -k 10 "$check_timeout" env -i PATH="$PATH" HOME="$home" TMPDIR="$tmp" LANG=C.UTF-8 TERM=dumb bash -c "$2")
+      fi ;;
+    *) (cd "$1" && timeout -k 10 "$check_timeout" bash -c "$2") ;;
+  esac
+}
+
 # --- Working directory ---
+# Resolve HEAD once: the worktree, the snapshot and the later diffs must use the same commit even
+# if another result is merged while this run is in progress.
 workdir=$top
-base_rev=$(git -C "$top" rev-parse HEAD)
-add_worktree() { # $1 = args before the path, $2 = path
+base_rev=$(git -C "$top" rev-parse HEAD) || die 10 "no commits in $top"
+add_worktree() { # $1 = path, $2 = revision or branch, $3.. = extra git worktree add arguments
+  local path=$1 rev=$2 try; shift 2
   for try in 1 2 3; do # parallel runs can contend for git locks
-    # shellcheck disable=SC2086
-    git -C "$top" worktree add -q $1 "$2" HEAD 2>/dev/null && return 0
+    git -C "$top" worktree add -q "$@" "$path" "$rev" 2>> "$dir/worktree-add.log" && return 0
     sleep $((try * 2))
   done
   return 1
 }
+copy_inputs() { # $1 = destination root
+  local rel
+  for rel in "${input_rels[@]}"; do
+    if [ -d "$top/$rel" ]; then
+      mkdir -p "$1/$rel" && cp -r "$top/$rel/." "$1/$rel/" || return 1
+    else
+      mkdir -p "$1/$(dirname "$rel")" && cp "$top/$rel" "$1/$rel" || return 1
+    fi
+    # Copies are references for the delegate; read-only files discourage editing them.
+    find "$1/$rel" -type f -exec chmod a-w {} + 2>/dev/null
+  done
+  return 0
+}
 if [ "$mode" = write ]; then
-  workdir="$dir/worktree"
-  add_worktree "-b delegate/$id" "$workdir" || { echo "delegate: could not create worktree" >&2; exit 5; }
+  workdir="$jdir/worktree"
+  # Create the branch once, then retry only the checkout, so a retry cannot fail on "branch exists".
+  git -C "$top" branch "delegate/$id" "$base_rev" || die 10 "could not create branch delegate/$id"
+  add_worktree "$workdir" "delegate/$id" || die 10 "could not create worktree (see $dir/worktree-add.log)"
+  keep_worktree=$workdir
 elif [ "$cli" = codex ]; then
-  # A Codex read role works on a disposable copy of the project as it stands now: HEAD plus
-  # uncommitted and untracked changes. Edits are discarded, even if the sandbox is unavailable.
-  throwaway="$dir/snapshot"
-  add_worktree "--detach" "$throwaway" || { echo "delegate: could not create worktree" >&2; exit 5; }
-  git -C "$top" diff --binary HEAD | git -C "$throwaway" apply 2>/dev/null
-  git -C "$top" ls-files -z --others --exclude-standard | (cd "$top" && xargs -0 -r cp --parents -t "$throwaway") 2>/dev/null
+  # A Codex read role works on a disposable copy of the project as it stands now: the base commit
+  # plus uncommitted and untracked changes. Anything it writes is discarded.
+  throwaway="$jdir/snapshot"
+  add_worktree "$throwaway" "$base_rev" --detach || die 10 "could not create worktree (see $dir/worktree-add.log)"
+  git -C "$top" diff --binary "$base_rev" > "$dir/uncommitted.patch" || die 10 "could not diff the working tree"
+  if [ -s "$dir/uncommitted.patch" ]; then
+    git -C "$throwaway" apply "$dir/uncommitted.patch" || die 10 "could not apply uncommitted changes to the snapshot"
+  fi
+  (cd "$top" && git ls-files -z --others --exclude-standard | xargs -0 -r cp -P --parents -t "$throwaway") \
+    || die 10 "could not copy untracked files to the snapshot"
   workdir=$throwaway
 fi
 
-# --- Inputs: files git ignores (such as .scratch/) are not in a worktree, so copy them in ---
+# Files git ignores (such as .scratch/) are not in a worktree, so copy the requested inputs in.
 if [ "$workdir" != "$top" ]; then
-  for p in "${inputs[@]}"; do
-    abs=$(realpath -m "$p")
-    case $abs in "$top"/*) ;; *) echo "delegate: --input must be inside the repo: $p" >&2; exit 2 ;; esac
-    [ -e "$abs" ] || { echo "delegate: --input not found: $p" >&2; exit 2; }
-    rel=${abs#"$top"/}
-    mkdir -p "$workdir/$(dirname "$rel")"
-    cp -r "$abs" "$workdir/$rel"
-    # Copies are references for the delegate; making files read-only discourages editing them.
-    find "$workdir/$rel" -type f -exec chmod a-w {} +
-  done
+  copy_inputs "$workdir" || die 10 "could not copy --input files"
 fi
+
+# --- Git as the wrapper uses it on a write role's worktree ---
+# The git directory is pinned from outside, hooks and fsmonitor are off, pathspecs are literal, and
+# the user's global and system git config (filters, aliases, credential helpers) is not read. A
+# delegate that rewrote the worktree's .git file or config therefore cannot make the wrapper run its
+# code, and the .git file is compared before and after the run. Filters defined in the repository's
+# own .git/config are still honoured.
+gitdir="" gitfile=""
+uname=$(git -C "$top" config user.name 2>/dev/null); uemail=$(git -C "$top" config user.email 2>/dev/null)
+if [ "$mode" = write ]; then
+  gitdir=$(git -C "$workdir" rev-parse --absolute-git-dir) || die 10 "cannot find the worktree git directory"
+  gitfile=$(cat "$workdir/.git")
+fi
+wgit() {
+  GIT_DIR="$gitdir" GIT_WORK_TREE="$workdir" GIT_LITERAL_PATHSPECS="${WGIT_LITERAL:-1}" \
+    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    git -c core.fsmonitor=false -c core.hooksPath=/dev/null -c core.fileMode=true \
+        -c user.name="${uname:-delegate}" -c user.email="${uemail:-delegate@localhost}" "$@"
+}
+file_sig() { # content hash and mode of a path in the work tree
+  printf '%s:%s' "$(git hash-object --no-filters -- "$workdir/$1" 2>/dev/null || echo MISSING)" \
+    "$(stat -c %a "$workdir/$1" 2>/dev/null || echo 0)"
+}
 
 # --- Setup ---
 if [ -n "$setup" ]; then
-  if ! (cd "$workdir" && timeout -k 10 "$check_timeout" bash -c "$setup") > "$dir/setup.log" 2>&1; then
-    echo "delegate: setup failed, see $dir/setup.log" >&2
-    exit 8
+  run_in "$workdir" "$setup" > "$dir/setup.log" 2>&1 || die 8 "setup failed, see $dir/setup.log"
+  if [ "$mode" = write ]; then
+    # Remember what setup produced. After the run, a setup file the delegate left untouched (same
+    # content and mode) stays out of the commit; one the delegate changed is part of its work.
+    : > "$dir/setup-files.nul"
+    while IFS= read -r -d '' f; do
+      printf '%s\0%s\0' "$f" "$(file_sig "$f")" >> "$dir/setup-files.nul"
+    done < <(wgit ls-files -z --modified --others --exclude-standard)
   fi
-  # Whatever setup created or modified is not the delegate's work, so keep it out of the commit.
-  git -C "$workdir" ls-files -z --modified --others --exclude-standard > "$dir/setup-files.nul"
 fi
 
 prompt="Delegated task, from the brief file:
@@ -128,46 +252,52 @@ Your final message is the result: say what you did, what you found, and anything
 Do not push, do not touch other branches, and do not print secrets."
 
 margs=(); [ -n "$model" ] && margs=(--model "$model")
-out="$dir/result.md"
-cd "$workdir" || exit 5
+cd "$workdir" || die 10 "cannot enter $workdir"
+# The git and GitHub logins are masked from the Claude and Gemini processes: no token variables, an
+# empty global git config and an empty gh config directory, so a stray push has no credentials.
+# Anything that can read the files by path (a test command, for example) is not stopped by this.
+mask=(env -u GH_TOKEN -u GITHUB_TOKEN GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GH_CONFIG_DIR="$home/gh")
 
 case $cli in
   claude)
-    # Headless runs cannot ask for permission, so anything not allowed here is denied. Extra tools come from --allow.
-    allowed="Read Grep Glob Bash(rg:*) Bash(fd:*) Bash(tree:*) Bash(git log:*) Bash(git diff:*) Bash(git show:*) Bash(git status:*)"
+    # Headless runs cannot ask for permission, so anything not allowed here is denied. Bash is
+    # disallowed outright unless --allow adds a Bash rule: Claude Code auto-allows some read-only
+    # shell commands, and acceptEdits auto-approves file commands such as mv and rm. Read roles get
+    # Read, Grep and Glob; write roles add Edit and Write. Whatever --allow adds, such as the test
+    # suite, runs with the full permissions of this user, so keep it narrow.
     bargs=(); [ -n "$budget" ] && bargs=(--max-budget-usd "$budget")
-    if [ "$mode" = write ]; then perm=(--permission-mode acceptEdits --allowedTools "$allowed Edit Write$extra")
-    else perm=(--allowedTools "$allowed$extra"); fi
-    timeout -k 30 "$timeout_s" claude -p "$prompt" "${margs[@]}" "${bargs[@]}" "${perm[@]}" > "$out" 2> "$dir/stderr.log" < /dev/null ;;
-  codex)
-    # Codex's own sandbox needs bubblewrap and user namespaces. When the container allows them (the
-    # seccomp profile in devcontainer.json does), use the sandbox: write roles may write only in
-    # their worktree, read roles nothing. Otherwise fall back to no sandbox with a warning, and the
-    # container is the only boundary. Either way: a scrubbed environment (no GH_*, no git credential
-    # helper, no other CLI's config), a throwaway CODEX_HOME holding only the Codex login, and no
-    # session files.
-    if command -v bwrap >/dev/null && bwrap --ro-bind / / --unshare-user --unshare-pid true >/dev/null 2>&1; then
-      sb=read-only; [ "$mode" = write ] && sb=workspace-write
+    if [ "$mode" = write ]; then
+      perm=(--permission-mode acceptEdits --allowedTools "Read Grep Glob Edit Write$extra")
     else
-      sb=danger-full-access
-      echo "delegate: warning: bubblewrap sandbox unavailable, Codex runs without a sandbox" >&2
+      perm=(--allowedTools "Read Grep Glob$extra")
     fi
-    echo "delegate: codex sandbox=$sb"
-    codexhome="$dir/codex-home"; mkdir -p "$codexhome" "$dir/home"; chmod 700 "$codexhome"
+    case $extra in *Bash*) ;; *) perm+=(--disallowedTools "Bash") ;; esac
+    timeout -k 30 "$timeout_s" "${mask[@]}" claude -p "$prompt" "${margs[@]}" "${bargs[@]}" "${perm[@]}" \
+      > "$out" 2> "$dir/stderr.log" < /dev/null
+    rc=$? ;;
+  codex)
+    # Scrubbed environment, a throwaway CODEX_HOME holding only the Codex login, no config.toml (it
+    # can carry MCP servers or hooks), no session files. Codex's own sandbox is off inside the jail
+    # because the jail confines it. Its answer is written inside jail/ and copied out below.
+    mkdir -p "$jdir/codex-home"; chmod 700 "$jdir/codex-home"
     src=${CODEX_HOME:-$HOME/.codex}
-    for f in auth.json config.toml; do [ -f "$src/$f" ] && cp "$src/$f" "$codexhome/"; done
-    env -i PATH="$PATH" HOME="$dir/home" CODEX_HOME="$codexhome" LANG=C.UTF-8 TERM=dumb \
-      timeout -k 30 "$timeout_s" codex exec --sandbox "$sb" --ephemeral "${margs[@]}" \
-      --output-last-message "$out" "$prompt" > "$dir/stdout.log" 2> "$dir/stderr.log" < /dev/null ;;
+    [ -f "$src/auth.json" ] && cp "$src/auth.json" "$jdir/codex-home/"
+    jail_cd=(); [ ${#jail[@]} -gt 0 ] && jail_cd=(--chdir "$workdir")
+    timeout -k 30 "$timeout_s" "${jail[@]}" "${jail_cd[@]}" env -i PATH="$PATH" HOME="$home" CODEX_HOME="$jdir/codex-home" \
+      TMPDIR="$tmp" LANG=C.UTF-8 TERM=dumb \
+      codex exec --sandbox danger-full-access --ephemeral "${margs[@]}" \
+      --output-last-message "$jdir/result.md" "$prompt" > "$dir/stdout.log" 2> "$dir/stderr.log" < /dev/null
+    rc=$?
+    # Take the answer out of the jail only if it is a plain file the wrapper can trust.
+    if [ -f "$jdir/result.md" ] && [ ! -L "$jdir/result.md" ]; then cp "$jdir/result.md" "$out"; fi ;;
   gemini)
     ap=plan; [ "$mode" = write ] && ap=auto_edit
-    timeout -k 30 "$timeout_s" gemini -p "$prompt" "${margs[@]}" --approval-mode "$ap" > "$out" 2> "$dir/stderr.log" < /dev/null ;;
-  *) echo "delegate: unsupported cli '$cli' in $CONF" >&2; exit 2 ;;
+    timeout -k 30 "$timeout_s" "${mask[@]}" gemini -p "$prompt" "${margs[@]}" --approval-mode "$ap" > "$out" 2> "$dir/stderr.log" < /dev/null
+    rc=$? ;;
+  *) die 2 "unsupported cli '$cli' in $CONF" ;;
 esac
-rc=$?
 if [ $rc -ne 0 ] || [ ! -s "$out" ]; then
-  echo "delegate: $cli failed (exit $rc); see $dir/stderr.log. Do the task yourself or retry." >&2
-  exit 5
+  die 5 "$cli failed (exit $rc); see $dir/stderr.log. Do the task yourself or retry."
 fi
 
 echo "delegate: role=$role cli=$cli model=${model:-default} mode=$mode"
@@ -175,21 +305,29 @@ echo "delegate: result  $out"
 
 # --- Write roles: commit on the delegate branch and validate what changed ---
 if [ "$mode" = write ]; then
-  git -C "$workdir" add -A || { echo "delegate: git add failed" >&2; exit 9; }
+  [ "$(cat "$workdir/.git" 2>/dev/null)" = "$gitfile" ] || die 9 "the worktree's .git file was modified; not safe to commit"
+  wgit add -A || die 9 "git add failed"
+  # Keep out of the commit: setup files the delegate did not change, and the --input copies.
+  : > "$dir/exclude.nul"
   if [ -s "$dir/setup-files.nul" ]; then
-    git -C "$workdir" reset -q --pathspec-from-file="$dir/setup-files.nul" --pathspec-file-nul 2>/dev/null
+    while IFS= read -r -d '' f && IFS= read -r -d '' sig; do
+      [ "$(file_sig "$f")" = "$sig" ] && printf '%s\0' "$f" >> "$dir/exclude.nul"
+    done < "$dir/setup-files.nul"
+  fi
+  # An input directory is excluded as a whole, so deleted and symlinked entries are covered too.
+  for rel in "${input_rels[@]}"; do printf '%s\0' "$rel" >> "$dir/exclude.nul"; done
+  if [ -s "$dir/exclude.nul" ]; then
+    wgit reset -q --pathspec-from-file="$dir/exclude.nul" --pathspec-file-nul \
+      || die 9 "could not keep setup files and inputs out of the commit"
   fi
   # --no-verify: project hooks do not run on delegate branches; run the project's checks when merging.
-  git -C "$workdir" commit -q --no-verify --allow-empty -m "delegate($role): $id" \
-    || { echo "delegate: git commit failed (is git user.name/user.email set?)" >&2; exit 9; }
-  git -C "$workdir" diff --name-only "$base_rev" HEAD -- > "$dir/changed-files.txt"
-  if [ ! -s "$dir/changed-files.txt" ]; then
-    echo "delegate: $role is a write role but changed no files; see $out and $dir/stderr.log" >&2
-    exit 6
-  fi
+  wgit commit -q --no-verify --allow-empty -m "delegate($role): $id" || die 9 "git commit failed"
+  wgit diff --name-only --no-renames "$base_rev" HEAD -- > "$dir/changed-files.txt"
+  [ -s "$dir/changed-files.txt" ] || die 6 "$role is a write role but changed no files; see $out and $dir/stderr.log"
   if [ ${#scopes[@]} -gt 0 ]; then
     excl=(); for sc in "${scopes[@]}"; do excl+=(":(exclude)$sc"); done
-    outside=$(git -C "$workdir" diff --name-only "$base_rev" HEAD -- . "${excl[@]}")
+    # Scope patterns are real pathspecs, so turn literal matching off for this one command.
+    outside=$(WGIT_LITERAL=0 wgit diff --name-only --no-renames "$base_rev" HEAD -- . "${excl[@]}")
     if [ -n "$outside" ]; then
       echo "delegate: changes outside --scope, not safe to merge:" >&2
       echo "$outside" | sed 's/^/  /' >&2
@@ -203,11 +341,22 @@ fi
 
 # --- Check ---
 if [ -n "$check" ]; then
-  if (cd "$workdir" && timeout -k 10 "$check_timeout" bash -c "$check") > "$dir/check.log" 2>&1; then
-    echo "delegate: check passed"
+  checkdir=$workdir
+  if [ "$mode" = write ]; then
+    # Validate the artifact that would be merged: a clean checkout of the commit, not the working
+    # tree, which may hold files the commit does not. It runs in the jail when there is one.
+    checktree="$jdir/check-tree"
+    add_worktree "$checktree" "$(wgit rev-parse HEAD)" --detach || die 10 "could not create the check checkout (see $dir/worktree-add.log)"
+    checkdir=$checktree
+    if [ -n "$setup" ]; then
+      run_in "$checkdir" "$setup" > "$dir/check-setup.log" 2>&1 \
+        || die 8 "setup failed in the check checkout, see $dir/check-setup.log"
+    fi
+  fi
+  if run_in "$checkdir" "$check" > "$dir/check.log" 2>&1; then
+    echo "delegate: check passed (on $([ "$mode" = write ] && echo 'a clean checkout of the commit' || echo 'the working tree'))"
   else
-    echo "delegate: check FAILED, see $dir/check.log" >&2
-    exit 4
+    die 4 "check FAILED, see $dir/check.log"
   fi
 fi
 echo "delegate: review the result yourself before using it"

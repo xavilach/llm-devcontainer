@@ -92,14 +92,14 @@ This devcontainer fixes the project setup. Skills never ask the user to configur
 
 - **Commands.** Take setup, build, typecheck and test commands from the repo's `AGENTS.md` or `CLAUDE.md`, then from its manifest files. If neither says, ask once and write the answer to `STATUS.md`.
 - **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search.
-- **Models.** Route work with `delegate`: Opus for decisions and design, Sonnet for implementation, Haiku for reading and searching, Codex and Gemini for second opinions and documentation. The roles are in `delegate-roles.conf`.
+- **Models.** Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex), `critique` (Gemini). The roles are in `delegate-roles.conf`.
 - **Other CLIs.** Claude, Codex and Gemini are installed and logged in. Skills that want an independent opinion call a CLI other than the one you are running in.
 
 ## Rules for every phase
 
 - Do not claim a task is done without the evidence `verify` asks for. Report skipped steps as skipped.
 - Decide reversible questions yourself, record the assumption in `decisions.md`, and keep going. Stop and ask only for irreversible, outward-facing or scope-changing decisions.
-- Commits need authorization. Before the first commit of a feature, ask once whether commits are allowed on this branch, and record the answer as `Commits:` in `STATUS.md`. Without a yes, leave the work in the working tree and say so. Never push, publish or delete without being asked.
+- Commits need authorization. Before the first commit of a feature, ask once whether commits are allowed on this branch, and record the answer as `Commits:` in `STATUS.md`. Without a yes, leave the work in the working tree and say so. Never push, publish or delete without being asked. The one exception is the `delegate/*` branches that `delegate.sh` creates for write roles (including UI proposals): the wrapper commits there, they are never your branch, and nothing from them reaches your branch until you merge it.
 - Run `unslop` on markdown that people read or that is committed: specs, designs, the contract, ADRs, READMEs, skills, `AGENTS.md`, PR descriptions, handoffs. Tickets, `STATUS.md`, logs and briefs are working notes and need only be clear.
 - If a later phase shows an earlier one was wrong, go back, fix that phase's output, and log the change in `changes.md`. Do not patch around it.
 - Run the riskiest assumption as a small executable check before detailed design or slicing, not after. Prefer fast feedback over complete documents.

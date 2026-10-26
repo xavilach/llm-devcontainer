@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: "Hand a bounded task to another model through its CLI: Opus for decisions and design, Sonnet for implementation, Haiku for reading and searching, Codex for documentation. Use when a task is cheaper or better done by a different model, or when the user says /delegate. Always try rg, fd and git yourself first."
+description: "Hand a bounded task to another model through its CLI: Opus to decide, Sonnet to implement, Haiku to search, Codex to review, draft docs and propose UIs, Gemini to critique. Use when a task is cheaper or better done by a different model, or when the user says /delegate. Always try rg, fd and git yourself first."
 ---
 
 # Delegate
@@ -19,58 +19,22 @@ Most "search" tasks need a command, not a model. Do these yourself and delegate 
 
 ## 2. Pick the role
 
-Roles and models are set in `/etc/delegate-roles.conf` (source `images/delegate-roles.conf`). Adding a role is one line. Read roles never edit files. Write roles work in a git worktree on their own branch.
+Seven roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.conf`). Adding one is a single line. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a single run.
 
-**Judgment** (strongest model, advises only)
-
-| Role | Model | Use for |
-| --- | --- | --- |
-| `decide` | Claude Opus | A hard choice between options, with trade-offs and a recommendation. |
-| `design` | Claude Opus | Type and module sketches, boundary questions, blast-radius analysis. |
-| `security` | Claude Opus | A security read of a diff or design: trust boundaries, input handling, secrets, permissions. |
-
-**Second opinion** (a different vendor from the one that wrote the work)
-
-| Role | Model | Use for |
-| --- | --- | --- |
-| `review` | Codex | Independent code review of a diff against the spec. This is `verify` step 3. |
-| `critique` | Gemini | Adversarial reading of a spec, design or plan: gaps, hidden assumptions, missing cases. |
-
-**Building**
-
-| Role | Model | Mode | Use for |
+| Role | CLI and model | Mode | Use for |
 | --- | --- | --- | --- |
-| `implement` | Claude Sonnet | write | A ticket with clear acceptance criteria and a check that can run. |
-| `tests` | Claude Sonnet | write | Tests for existing behavior at an agreed seam, or a regression test for a known bug. |
-| `diagnose` | Claude Sonnet | write | Building the repro and feedback loop for a bug, so you can reason about the cause. |
-| `mechanical` | Claude Haiku | write | Renames, codemods, format or API migrations, repeated edits. Always pass `--check`. |
-
-**Reading and summarizing**
-
-| Role | Model | Use for |
-| --- | --- | --- |
-| `search` | Claude Haiku | Reading many files and reporting what matters, with `file:line`. |
-| `summarize` | Claude Haiku | Logs, long documents, PR threads, diffs, session transcripts. |
-| `longctx` | Gemini | Input too big for the others, such as a whole repo or a huge log. Gemini's strength is a large context window. |
-
-**UI design**
-
-| Role | Model | Use for |
-| --- | --- | --- |
-| `ui-proposals` | Codex (OpenAI) | One distinct UI direction as a static HTML mockup with notes (write). `design` runs several in parallel and the user chooses. |
-
-**Writing for people**
-
-| Role | Model | Use for |
-| --- | --- | --- |
-| `docs` | Codex | A draft of README, API or how-to text for code that already exists (write). |
-| `writeup` | Claude Haiku | PR descriptions, commit messages, changelog and release notes from a diff. |
+| `decide` | Claude Opus | read | A hard choice, a design sketch, a blast-radius or security read. It advises, you decide. |
+| `implement` | Claude Sonnet | write | A ticket with a check that can run. Also tests, a bug repro loop, and mechanical edits (renames, codemods, migrations: add `--model claude-haiku-5-5` and always pass `--check`). |
+| `search` | Claude Haiku | read | Reading many files, logs, diffs or threads and reporting what matters, with `file:line`. |
+| `review` | Codex | read | An independent review of a diff against the spec. `verify` uses it. |
+| `critique` | Gemini | read | An adversarial read of a spec, design or plan. Also huge inputs (a whole repo or a long log), because Gemini has a large context window. |
+| `docs` | Codex | write | Drafts of README, API and how-to text, PR descriptions and changelog entries, written to files. |
+| `ui-proposals` | Codex | write | One distinct UI direction as a static HTML mockup with notes. `design` runs several in parallel. |
 
 Rules of thumb:
 
 - Escalate up for judgment, down for volume. Match the work to the lowest model that can do it, then check the result.
-- Pick a second-opinion role from a vendor other than the one that wrote the work. Use `review` or `critique` on Claude's work, and a Claude role on Codex's or Gemini's. If you already run on Opus, do `decide` and `design` yourself.
-- The delegate advises on `decide` and `design`. You and the user make the decision.
+- Take a second opinion from a vendor other than the one that wrote the work: `review` or `critique` on Claude's work, a Claude role on Codex's or Gemini's. If you already run on Opus, do `decide` yourself.
 - Do not delegate approvals, specs that need the user's answers, irreversible actions, or anything where writing the brief takes longer than the task.
 - Independent tasks can run in parallel. Each write task gets its own worktree, so they do not collide.
 
@@ -95,38 +59,41 @@ delegate.sh <role> .scratch/briefs/<name>.md [options]
 
 | Option | Meaning |
 | --- | --- |
-| `--input <path>` | Copy a file or directory into the delegate's working tree at the same relative path (repeatable). **Required for anything under `.scratch/`**, which git ignores and a worktree therefore does not contain. Copies are read-only. |
-| `--setup "<cmd>"` | Run in the working tree before the CLI starts, for example `npm ci`. A fresh worktree has no installed dependencies. Files setup creates are kept out of the delegate's commit. |
-| `--check "<cmd>"` | Run in the working tree afterwards. Exit 4 if it fails. |
-| `--allow "<tool>"` | Extra tool for a Claude delegate (repeatable), for example `"Bash(npm test:*)"`. Headless runs cannot ask, so anything not allowed is denied. Allow the narrowest command that works. |
+| `--input <path>` | Copy a file or directory into the delegate's working tree at the same relative path (repeatable). **Required for anything under `.scratch/`**, which git ignores, and for any file with uncommitted changes. Copies are read-only references and are never part of the delegate's commit, even when the path is tracked. |
+| `--setup "<cmd>"` | Run before the CLI starts, for example `npm ci`. A fresh worktree has no installed dependencies. Files setup creates are kept out of the delegate's commit unless the delegate changed them. |
+| `--check "<cmd>"` | Run on the finished work. Exit 4 if it fails. For a write role it runs in a fresh checkout of the committed result, with `--setup` run there again, so it validates exactly what would be merged. |
+| `--allow "<tool>"` | Extra tool for a Claude delegate (repeatable), for example `"Bash(npm test:*)"`. Headless runs cannot ask, so anything not allowed is denied. Allow the narrowest command that works. Ignored, with a warning, for other CLIs. |
 | `--scope <pathspec>` | A write role may only change matching paths (repeatable). Exit 7 if it touches others. |
 | `--tag <name>` | Name added to the run ID, such as a ticket ID. Parallel runs are safe: each has its own worktree and branch. |
 | `--model <id>` | Override the model in the roles file. |
-| `--budget <usd>` | Spend cap for a Claude delegate. |
-| `--timeout <s>`, `--check-timeout <s>` | Time limit for the CLI (default 900, killed 30 s later) and for setup and check (default 600). |
+| `--budget <usd>` | Spend cap. Claude only; other CLIs have none, so the script exits 2 rather than pretend. |
+| `--timeout <s>`, `--check-timeout <s>` | Limit for the CLI (default 900, killed 30 s later) and for setup and check (default 600). |
 
-- Run it from inside the git repo. Output goes to `.scratch/delegations/<id>/`: the brief, `result.md`, logs, `changed-files.txt`, and for write roles a worktree on the branch `delegate/<id>`.
-- A write role works from the committed `HEAD`. Uncommitted changes in your working tree are not in its worktree. A Codex read role works on a copy of the project as it is now, including uncommitted and untracked files.
-- The wrapper commits a write role's result on the delegate branch, without running project hooks. It does not commit files created by `--setup`. Tell the delegate not to commit.
-- Exit codes: 3 the CLI is not installed, 4 check failed, 5 the CLI failed or timed out, 6 a write role changed no files, 7 changes outside `--scope`, 8 setup failed, 9 commit failed. On 3 or 5 do the task yourself or retry. Do not block on a delegate.
+- Run it from inside the git repo. In `.scratch/delegations/<id>/` the brief, `result.md`, logs and `changed-files.txt` belong to the wrapper. Everything the delegate can write is under `<id>/jail/`: the worktree on branch `delegate/<id>`, the snapshot, the check checkout and a scratch HOME. A delegate can therefore never plant a link where the wrapper writes.
+- A write role works from the `HEAD` that was current when the run started, resolved once, so a merge during the run cannot skew the diffs. Uncommitted changes in your working tree are not in its worktree. A Codex read role works on a copy of the project as it is now, uncommitted and untracked files included.
+- The wrapper commits a write role's result on the delegate branch, without running project hooks. Tell the delegate not to commit.
+- Exit codes: 3 the CLI is not installed or Codex cannot be confined, 4 check failed, 5 the CLI failed or timed out, 6 a write role changed no files, 7 changes outside `--scope`, 8 setup failed, 9 commit failed or the worktree was tampered with, 10 the working tree could not be prepared. On 3 or 5 do the task yourself or retry. Do not block on a delegate. A failed write run keeps its worktree and branch and prints the command to discard them.
 
 ## 5. Review before using
 
 A delegate's report is a claim, not evidence.
 
 - For read roles, spot-check the findings. Open two or three of the cited `file:line` references with `rg` or `bat`.
-- For `implement`, read the diff with `git diff HEAD...delegate/<id>`, run the real checks, then merge or cherry-pick. The branch commit is the delegate's, so the diff against `HEAD` is the full change.
+- For `implement`, read the diff with `git diff HEAD...delegate/<id>`, run the real checks, then merge or cherry-pick.
 - For `docs`, run every command and snippet it wrote, check each claim against the code, then run `unslop`. A model drafting docs only knows what it read.
-- Look at the diff stat for stray files. A delegate that ran a program may have left caches or build output on its branch.
-- Clean up when done: `git worktree remove <path>` and `git branch -D delegate/<id>`.
+- Look at the diff stat for stray files such as caches or build output.
+- Clean up: `git worktree remove --force <path>` (setup leaves untracked files such as `node_modules` that make a plain remove refuse), `git branch -D delegate/<id>`, then `git worktree prune`.
 - Then continue with `verify` as usual. Delegation does not replace it.
 
 ## Limits
 
-- **Codex runs in its bubblewrap sandbox when the container allows it.** The script probes for it and prints `codex sandbox=<mode>`. Write roles get `workspace-write` (writes only in their worktree) and read roles get `read-only`, and both run with a scrubbed environment (no `GH_*`, no git credential helper, no other CLI's config) and a throwaway `CODEX_HOME` that holds only the Codex login. If the probe fails, the script warns and falls back to `danger-full-access`: then Codex can read and write any path the `node` user can, including the workspace and the config volumes, so treat it like a script you run yourself and use `--scope` and a diff review.
-- The Codex sandbox needs the project under `/workspace`. Inside it, bubblewrap mounts a fresh tmpfs over `/tmp`, which hides Codex's helper binary when the repo, and so its delegation directory, lives under `/tmp`. Codex then fails with "execvp codex-linux-sandbox: No such file". Keep projects in `/workspace`.
-- Claude and Gemini rely on their own permission modes. Claude write roles can only use the tools in `--allow` plus editing; Gemini write roles auto-approve edits.
-- Write roles isolate by working directory and branch. That is a convenience for merging, not a security boundary.
-- Gemini needs headless authentication and a trusted folder. Put the key in `~/.gemini/.env` as `GEMINI_API_KEY`. `/workspace` is trusted; in an untrusted directory such as `/tmp` the key is not loaded and the role exits 5 with "must specify the GEMINI_API_KEY". The roles use `gemini-3-flash-preview`: the CLI default was overloaded (503), the 2.5 models returned 404, and the Pro models need a paid key. Retry later or change the model in the conf file if a call fails. Until then use a Claude or Codex role for the same job: `critique` becomes a fresh Claude Opus run, and `longctx` becomes a `search` split into parts.
-- Model names go stale. If a call fails on an unknown model, update the conf file or pass `--model`.
+- **The jail.** Whenever bubblewrap works, Codex runs in a jail, and so do the `--setup` and `--check` commands of every CLI, because they run code the delegate may have written. The root is read-only. `$HOME`, `/tmp`, `/run`, the shell history, and the `.scratch/` of the project and of every ancestor (other delegations and their copied logins) are replaced by empty directories, which hides every CLI's credentials and forwarded agent sockets. Only the run's `jail/` directory is writable. The project root may not contain `$HOME`.
+- **What the jail does not do.** The network stays open, because the CLIs need their APIs (the container firewall still applies), so a delegate can send anything it can read to an allowed host. The whole repository is readable, including `.env` files and any remote URL with a token in `.git/config`: keep secrets out of the repo.
+- **Without bubblewrap**, setup and check still run with a scrubbed environment and a scratch HOME, but unconfined, and Codex is refused (exit 3) unless `DELEGATE_ALLOW_UNSANDBOXED=1`, which lets it reach anything the `node` user can.
+- **Codex** runs with a scrubbed environment (no `GH_*`, no git credential helper), a throwaway `CODEX_HOME` holding only its own login (never `config.toml`, which can carry MCP servers or hooks), and its own sandbox off, because the jail confines it.
+- **Claude** has Bash disallowed in every role unless `--allow` adds a Bash rule. Claude Code auto-allows some read-only commands and `acceptEdits` auto-approves file commands such as `mv` and `rm`. Read roles get Read, Grep and Glob; write roles add Edit and Write. Whatever `--allow` adds, such as the test suite, runs with the full permissions of the `node` user and can edit and run project scripts, so keep it narrow and review the diff.
+- **Credentials for Claude and Gemini** are masked against accidents: no token variables, an empty global git config and an empty `gh` config directory, so a stray push has no credentials. A command that reads the credential files by path is not stopped. Gemini write roles auto-approve edits.
+- **The wrapper's git** uses a pinned git directory, no hooks or fsmonitor, literal pathspecs and no global or system config, and it refuses to commit if the worktree's `.git` file changed. Filters defined in the repository's own `.git/config` are still honoured.
+- **Gemini** needs headless authentication and a trusted folder. Put the key in `~/.gemini/.env` as `GEMINI_API_KEY`. `/workspace` is trusted; elsewhere, such as `/tmp`, the key is not loaded and the role exits 5 with "must specify the GEMINI_API_KEY". The role uses `gemini-3-flash-preview`: the CLI default was overloaded (503), the 2.5 models returned 404 and the Pro models need a paid key. Until it works, use a fresh Claude Opus run in place of `critique`.
+- Model names go stale. If a call fails on an unknown model, update the roles file or pass `--model`. After a rebuild, run `images/delegate-smoke.sh` to catch renamed flags.
 - Delegates start with no memory of this session. Anything you do not put in the brief does not exist for them.
