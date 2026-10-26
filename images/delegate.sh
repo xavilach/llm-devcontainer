@@ -325,7 +325,10 @@ if [ "$mode" = write ]; then
       || die 9 "could not keep setup files and inputs out of the commit"
   fi
   # --no-verify: project hooks do not run on delegate branches; run the project's checks when merging.
-  wgit commit -q --no-verify --allow-empty -m "delegate($role): $id" || die 9 "git commit failed"
+  # Nothing staged means the delegate changed nothing: leave the branch at the base, no empty commit.
+  if ! wgit diff --cached --quiet; then
+    wgit commit -q --no-verify -m "delegate($role): $id" || die 9 "git commit failed"
+  fi
   wgit diff --name-only --no-renames "$base_rev" HEAD -- > "$dir/changed-files.txt"
   [ -s "$dir/changed-files.txt" ] || die 6 "$role is a write role but changed no files; see $out and $dir/stderr.log"
   if [ ${#scopes[@]} -gt 0 ]; then

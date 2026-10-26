@@ -91,7 +91,8 @@ echo "== write role basics"
 brief "STUB:write out.txt hello"; run w "$T/brief.md" --tag basic; expect "write role succeeds" 0 $rc
 d=$(latest basic); expect "changed-files lists the new file" "out.txt" "$(cat "$d/changed-files.txt")"
 contains "branch delegate/<id> exists" "$(git branch --list 'delegate/*basic*')" "delegate/"
-brief "nothing to do"; run w "$T/brief.md"; expect "no change -> 6" 6 $rc
+brief "nothing to do"; run w "$T/brief.md" --tag emptybranch; expect "no change -> 6" 6 $rc
+expect "a run that changed nothing leaves no empty commit on its branch" 0 "$(git rev-list --count "HEAD..$(branch_of emptybranch)")"
 brief "STUB:fail"; run w "$T/brief.md"; expect "CLI failure -> 5" 5 $rc
 contains "failed write run prints the discard command" "$out" "worktree remove --force"
 brief "STUB:sleep 6"; run w "$T/brief.md" --timeout 1; expect "timeout -> 5" 5 $rc
@@ -273,6 +274,13 @@ gcrun --bogus; expect "unknown option -> 2" 2 $rc
 gcrun --older-than abc; expect "non-numeric --older-than -> 2" 2 $rc
 gcrun --older-than; expect "--older-than without a value -> 2" 2 $rc
 contains "usage message printed" "$out" "usage"
+echo "== delegate-gc: commits that net to nothing"
+gc_fixture
+brief "STUB:write z.txt 1"; run w "$T/brief.md" --tag netzero; id_netzero=$(gcid netzero)
+git -C "$gcrepo/.scratch/delegations/$id_netzero/jail/worktree" revert --no-edit HEAD >/dev/null 2>&1
+expect "the branch has two commits that cancel out" 2 "$(git -C "$gcrepo" rev-list --count "HEAD..delegate/$id_netzero")"
+gcrun --apply; expect "a run whose commits net to nothing is removed" no "$(exists "$id_netzero")"
+
 echo "== delegate-gc safety (found by the verify reviews)"
 gc_fixture
 brief "STUB:write partial.txt precious" "STUB:fail"; run w "$T/brief.md" --tag dirty; id_dirty=$(gcid dirty)

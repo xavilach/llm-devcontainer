@@ -31,7 +31,7 @@ need "roles file has every role delegate.sh docs mention" bash -c "for r in deci
 
 if [ "${1:-}" = --live ]; then
   top=$(git rev-parse --show-toplevel 2>/dev/null) || { echo "FAIL  --live needs a git repo"; exit 1; }
-  brief=$(mktemp "$top/.scratch-smoke.XXXXXX.md"); echo "Reply with exactly: ok" > "$brief"
+  mkdir -p "$top/.scratch"; brief=$(mktemp "$top/.scratch/smoke-brief.XXXXXX.md"); echo "Reply with exactly: ok" > "$brief"
   for role in search review critique; do
     if timeout 200 "$here/delegate.sh" "$role" "$brief" --timeout 150 >/dev/null 2>&1; then echo "ok    live $role"; else echo "FAIL  live $role (see .scratch/delegations/)"; fail=1; fi
   done
