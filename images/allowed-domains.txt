@@ -9,6 +9,31 @@ codeload.github.com
 github-releases.githubusercontent.com
 ghcr.io
 
+# --- GitHub Actions run logs (gh run view --log, gh api .../logs) ---
+# The names are GitHub's, one per log storage account. They share Azure addresses with other
+# tenants, so allowing them also reaches those addresses: an accepted widening, approved by the owner on
+# 2026-10-27 so that a failed CI run can be read from the container.
+productionresultssa0.blob.core.windows.net
+productionresultssa1.blob.core.windows.net
+productionresultssa2.blob.core.windows.net
+productionresultssa3.blob.core.windows.net
+productionresultssa4.blob.core.windows.net
+productionresultssa5.blob.core.windows.net
+productionresultssa6.blob.core.windows.net
+productionresultssa7.blob.core.windows.net
+productionresultssa8.blob.core.windows.net
+productionresultssa9.blob.core.windows.net
+productionresultssa10.blob.core.windows.net
+productionresultssa11.blob.core.windows.net
+productionresultssa12.blob.core.windows.net
+productionresultssa13.blob.core.windows.net
+productionresultssa14.blob.core.windows.net
+productionresultssa15.blob.core.windows.net
+productionresultssa16.blob.core.windows.net
+productionresultssa17.blob.core.windows.net
+productionresultssa18.blob.core.windows.net
+productionresultssa19.blob.core.windows.net
+
 # --- Anthropic / Claude Code ---
 api.anthropic.com
 console.anthropic.com

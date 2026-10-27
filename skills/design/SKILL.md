@@ -92,7 +92,7 @@ The accepted mockup is a reference, not production code. `build` implements it i
 
 On the Large path, find what the change could break outside the diff. On the Medium path, name the one fact the change is safe because of and point at it. Listing callers is not the job, because grep does that. Look where grep stops.
 
-- The source of any library you call, its pinned version and local patches.
+- The source of any library you call, its pinned version and local patches. For a library that does I/O, read its `Read`, `Write`, `Close` and every call that sleeps, and write down whether `Close` can interrupt each one and what happens to the descriptor afterwards. A safety fact about the call you change says nothing about the others.
 - Timing, such as teardown order and async boundaries.
 - Data that crosses a boundary, such as API JSON, database columns, wire formats, another language reading the same bytes, feature flags.
 
