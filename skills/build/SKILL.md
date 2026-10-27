@@ -57,7 +57,7 @@ When you change files with a script, assert that each replacement matched, or us
 
 ## Whole graph
 
-Use this mode on the Large path only, when at least two tickets can run in parallel. A chain of dependent tickets, or a Medium feature with one or two tickets, is cheaper to build yourself with the loop above (see "Subagents and delegation" in `engineering-flow`). Respect `Subagents:` in `STATUS.md`.
+Use this mode on the Large path, when at least two tickets can run in parallel. A Medium feature with five or more tickets, of which at least three have disjoint `Touches:` and a runnable check, may also use it for those tickets (`implement-codex` first, Haiku for mechanical edits, Sonnet only when a ticket needs judgment), while contract, concurrency and dependency-patching tickets stay in the main session. Measure the cost of the first such feature before making it a habit. A chain of dependent tickets, or a feature with one or two tickets, is cheaper to build yourself with the loop above (see "Subagents and delegation" in `engineering-flow`). Respect `Subagents:` in `STATUS.md`.
 
 You do not write the code in this mode. You schedule tickets, brief implementers through `delegate`, check what comes back, and merge it.
 
@@ -82,13 +82,14 @@ For each ready ticket within the limit:
 3. Launch it in the background:
 
    ```
-   delegate.sh implement <brief> --tag <ticket-id> --setup "<setup command>" \
+   delegate.sh implement-codex <brief> --tag <ticket-id> --setup "<setup command>" \
      --input .scratch/<feature-slug>/spec.md --input .scratch/<feature-slug>/design.md \
      --input .scratch/<feature-slug>/issues/<NN>-<slug>.md --input docs/project/contracts/<feature-slug>.md \
      --scope <paths of the modules named in Touches:> \
-     --allow "Bash(<test command>:*)" --allow "Bash(<typecheck command>:*)" \
-     --check "<check>" --budget <usd>
+     --check "<check>"
    ```
+
+   For a Claude role (`implement`, or `implement --model claude-haiku-5-5` for mechanical edits) add `--allow "Bash(<test command>:*)" --allow "Bash(<typecheck command>:*)"` and `--budget <usd>`. Codex has no tool list and no budget: `--allow` is ignored with a warning and `--budget` is refused (exit 2), so leave both out.
 
    `Touches:` holds module names, so map each one to its source directory and its test paths (a test-first implementer writes both) for `--scope`. `--budget` is enforced for Claude delegates only. The `--input` flags matter: `.scratch/` is git-ignored, so the delegate's worktree does not have those files unless they are copied in, and they arrive read-only. Use `--model` to put a hard ticket on a stronger model. UI work runs against the contract, with stubs for the other side until it lands.
 4. When a delegate finishes, handle it as below, then refill the frontier.

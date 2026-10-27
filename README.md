@@ -188,12 +188,13 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 
 ### Models and delegation
 
-`/delegate` runs a bounded task on another model through its CLI, headless. Six roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
+`/delegate` runs a bounded task on another model through its CLI, headless. Eight roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
 
 | Role | Model | Mode | Use for |
 | --- | --- | --- | --- |
 | `decide` | Claude Opus | read | a hard choice, a design sketch, a blast-radius or security read |
-| `implement` | Claude Sonnet | write | tickets, tests, bug repro loops; mechanical edits with `--model claude-haiku-5-5` |
+| `implement-codex` | Codex | write | tickets with a runnable check, tests, bug repro loops; try this first |
+| `implement` | Claude Sonnet | write | tickets that need judgment; mechanical edits with `--model claude-haiku-5-5` |
 | `search` | Claude Haiku | read | reading many files, logs or diffs |
 | `review` | Codex | read | second opinion on a diff |
 | `docs` | Codex | write | docs, PR text, changelog entries |
