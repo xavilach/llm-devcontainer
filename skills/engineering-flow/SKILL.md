@@ -91,8 +91,8 @@ When the work has a user interface, the UI and the rest are decided together. If
 This devcontainer fixes the project setup. Skills never ask the user to configure any of it.
 
 - **Commands.** Take setup, build, typecheck and test commands from the repo's `AGENTS.md` or `CLAUDE.md`, then from its manifest files. If neither says, ask once and write the answer to `STATUS.md`.
-- **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search.
-- **Models.** Whether to spawn at all is decided by "Subagents and delegation" above. Route work with `delegate`: `decide` (Opus), `implement` (Sonnet), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex), `critique` (Gemini). The roles are in `delegate-roles.conf`.
+- **Tools.** Use `rg`, `fd`, `tree`, `jq` and `git` before reading files by hand or delegating a search. Stop a process by its id: `pkill -f` also matches the shell that runs it and ends your own command. If a download fails with `no route to host` for an allowed domain, run `sudo /usr/local/bin/init-firewall.sh` to re-resolve the allowlist.
+- **Models.** Whether to spawn at all is decided by "Subagents and delegation" above. Route work with `delegate`: `decide` (Opus), `implement-codex` (Codex, first choice for a ticket with a runnable check), `implement` (Sonnet, when the ticket needs judgment), `search` (Haiku), `review` and `docs` and `ui-proposals` (Codex), `critique` (Gemini). The roles are in `delegate-roles.conf`.
 - **Other CLIs.** Claude, Codex and Gemini are installed and logged in. Skills that want an independent opinion call a CLI other than the one you are running in.
 
 ## Subagents and delegation
@@ -111,13 +111,15 @@ Two mechanisms exist. The in-session Agent tool (types `Explore`, `Plan`, `gener
 | Medium | Inline by default. One `Explore` (Haiku) sweep if the code area is unfamiliar. One fresh-context reviewer in `verify` only for risky changes. |
 | Large | Search sweeps on Haiku, two fresh-context reviewers in `verify`, whole-graph `build` when the graph has parallel tickets. |
 
-Pick the cheapest type and model that can do the job.
+Pick the cheapest type and model that can do the job, and lean on Haiku and Codex before Sonnet and Opus.
+
+**Fresh context between phases.** Align, design and slice end by writing files (`spec.md`, `design.md`, tickets, `STATUS.md`), and the next phase reads files, not the chat. At each of those gates, tell the user that `/clear` is safe now and that `STATUS.md` says where to resume. A session that carries align through verify in one context pays for every earlier message on every later turn.
 
 | Job | Use |
 | --- | --- |
 | Find or read many files, report `file:line` | `Explore` with `model: haiku` |
 | Sketch a design or plan | `Plan` |
-| Implement a ticket with a runnable check | `delegate.sh implement` (Sonnet), or `general-purpose` with `model: sonnet` |
+| Implement a ticket with a runnable check | `delegate.sh implement-codex` (Codex) first, `implement` (Sonnet) when it needs judgment, Haiku for mechanical edits |
 | Hard decision, security or blast-radius read | `decide` (Opus), only when judgment is the point |
 | Independent review or critique | `delegate.sh review` or `critique` (other vendor) |
 

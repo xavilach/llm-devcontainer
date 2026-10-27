@@ -1,6 +1,6 @@
 ---
 name: delegate
-description: "Hand a bounded task to another model through its CLI: Opus to decide, Sonnet to implement, Haiku to search, Codex to review, draft docs and propose UIs, Gemini to critique. Use when a task is cheaper or better done by a different model, or when the user says /delegate. Always try rg, fd and git yourself first."
+description: "Hand a bounded task to another model through its CLI: Opus to decide, Codex or Sonnet to implement (Codex first when the ticket has a check), Haiku to search and do mechanical edits, Codex to review, draft docs and propose UIs, Gemini to critique. Use when a task is cheaper or better done by a different model, or when the user says /delegate. Always try rg, fd and git yourself first."
 ---
 
 # Delegate
@@ -21,12 +21,13 @@ Whether to delegate at all follows "Subagents and delegation" in `engineering-fl
 
 ## 2. Pick the role
 
-Seven roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.conf`). Adding one is a single line. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a single run.
+Eight roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.conf`). Adding one is a single line. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a single run.
 
 | Role | CLI and model | Mode | Use for |
 | --- | --- | --- | --- |
 | `decide` | Claude Opus | read | A hard choice, a design sketch, a blast-radius or security read. It advises, you decide. |
-| `implement` | Claude Sonnet | write | A ticket with a check that can run. Also tests, a bug repro loop, and mechanical edits (renames, codemods, migrations: add `--model claude-haiku-5-5` and always pass `--check`). |
+| `implement-codex` | Codex | write | A ticket with a check that can run: tests, a bug repro loop, a UI or backend slice behind a mock. Try this first for implementation work. |
+| `implement` | Claude Sonnet | write | The same, when the ticket needs judgment (a contract, concurrency, a patched dependency). With `--model claude-haiku-5-5` and `--check` it is the role for mechanical edits (renames, codemods, migrations). |
 | `search` | Claude Haiku | read | Reading many files, logs, diffs or threads and reporting what matters, with `file:line`. |
 | `review` | Codex | read | An independent review of a diff against the spec. `verify` uses it. |
 | `critique` | Gemini | read | An adversarial read of a spec, design or plan. Also huge inputs (a whole repo or a long log), because Gemini has a large context window. |
@@ -35,7 +36,7 @@ Seven roles, set in `/etc/delegate-roles.conf` (source `images/delegate-roles.co
 
 Rules of thumb:
 
-- Escalate up for judgment, down for volume. Match the work to the lowest model that can do it, then check the result.
+- Escalate up for judgment, down for volume. Match the work to the lowest model that can do it, then check the result. Try Haiku (search, mechanical edits) and Codex (implementation with a check, docs, review, UI proposals) first; use Sonnet when a ticket needs judgment, and Opus only to decide.
 - Take a second opinion from a vendor other than the one that wrote the work: `review` or `critique` on Claude's work, a Claude role on Codex's or Gemini's. If you already run on Opus, do `decide` yourself.
 - Do not delegate approvals, specs that need the user's answers, irreversible actions, or anything where writing the brief takes longer than the task.
 - Independent tasks can run in parallel. Each write task gets its own worktree, so they do not collide.
@@ -75,6 +76,7 @@ delegate.sh <role> .scratch/briefs/<name>.md [options]
 - A write role works from the `HEAD` that was current when the run started, resolved once, so a merge during the run cannot skew the diffs. Uncommitted changes in your working tree are not in its worktree. A Codex read role works on a copy of the project as it is now, uncommitted and untracked files included.
 - The wrapper commits a write role's result on the delegate branch, without running project hooks. Tell the delegate not to commit.
 - Exit codes: 3 the CLI is not installed or Codex cannot be confined, 4 check failed, 5 the CLI failed or timed out, 6 a write role changed no files, 7 changes outside `--scope`, 8 setup failed, 9 commit failed or the worktree was tampered with, 10 the working tree could not be prepared. On 3 or 5 do the task yourself or retry. Do not block on a delegate. A failed write run keeps its worktree and branch and prints the command to discard them.
+- Waiting: make `delegate.sh` itself the background command (the harness's `run_in_background`), not `delegate.sh ... &` inside another command. A trailing `&` makes the launching command finish at once, and its completion notice then says nothing about the run. To poll, test for `.scratch/delegations/<id>/result.md`, or wait on the process id. Never loop on `pgrep -f`: it matches the loop's own shell and never ends.
 
 ## 5. Review before using
 
@@ -118,6 +120,7 @@ Everything else is protected and only listed. A run whose `delegate.sh` process 
 - **Claude** has Bash disallowed in every role unless `--allow` adds a Bash rule. Claude Code auto-allows some read-only commands and `acceptEdits` auto-approves file commands such as `mv` and `rm`. Read roles get Read, Grep and Glob; write roles add Edit and Write. Whatever `--allow` adds, such as the test suite, runs with the full permissions of the `node` user and can edit and run project scripts, so keep it narrow and review the diff.
 - **Credentials for Claude and Gemini** are masked against accidents: no token variables, an empty global git config and an empty `gh` config directory, so a stray push has no credentials. A command that reads the credential files by path is not stopped. Gemini write roles auto-approve edits.
 - **The wrapper's git** uses a pinned git directory, no hooks or fsmonitor, literal pathspecs and no global or system config, and it refuses to commit if the worktree's `.git` file changed. Filters defined in the repository's own `.git/config` are still honoured.
+- **File modes.** The wrapper counts a mode change, such as `chmod +x`, as a change. On a filesystem that does not keep exec bits, such as a Windows or WSL bind mount, a fresh worktree already shows every file as mode-changed. The wrapper probes for this before the delegate starts and, if it finds it, prints a note and ignores mode changes for that run. A delegate that makes a file executable then goes unnoticed on such a filesystem, so check modes when you merge.
 - **Gemini** needs headless authentication and a trusted folder. Put the key in `~/.gemini/.env` as `GEMINI_API_KEY`. `/workspace` is trusted; elsewhere, such as `/tmp`, the key is not loaded and the role exits 5 with "must specify the GEMINI_API_KEY". The role uses `gemini-3.5-flash-lite`, the only model that answered reliably on a free-tier key (the CLI default, `gemini-3-flash-preview` and `gemini-3.5-flash` returned 503 or 429, the 2.5 models 404, the Pro models have no free quota). It is a lite model, so expect a shallower critique than from Opus or Codex. When Google returns 503 or 429, retry later, pass another model with `--model`, or use a fresh Claude Opus run in place of `critique`.
 - Model names go stale. If a call fails on an unknown model, update the roles file or pass `--model`. After a rebuild, run `images/delegate-smoke.sh` to catch renamed flags.
 - Delegates start with no memory of this session. Anything you do not put in the brief does not exist for them.

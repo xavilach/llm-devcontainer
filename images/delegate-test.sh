@@ -358,6 +358,19 @@ wait
 expect "parallel run 1" 0 "$(cat "$T/p1.rc")"; expect "parallel run 2" 0 "$(cat "$T/p2.rc")"
 expect "parallel runs get separate branches" 2 "$(git branch --list '*par*' | wc -l)"
 
+echo "== filesystem that does not keep file modes"
+# A post-checkout hook makes every file executable in a new worktree, like a Windows or WSL bind mount.
+cat > .git/hooks/post-checkout <<'HOOK'
+#!/bin/bash
+git ls-files -z | xargs -0 -r chmod +x
+HOOK
+chmod +x .git/hooks/post-checkout
+brief "STUB:write x.txt 1"; run w "$T/brief.md" --tag nomode --scope x.txt
+expect "mode noise from the filesystem does not break --scope" 0 $rc
+contains "tells the user modes are ignored" "$out" "does not keep file modes"
+expect "only the real change is listed" "x.txt" "$(cat "$(latest nomode)/changed-files.txt" 2>/dev/null)"
+rm -f .git/hooks/post-checkout
+
 echo
 echo "$pass passed, $failn failed"
 [ $failn -eq 0 ]

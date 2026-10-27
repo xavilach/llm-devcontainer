@@ -63,6 +63,7 @@ Use the authentication prompts for each CLI. No SSH-agent forwarding, SSH keys, 
 | `llm-git-config` | `/home/node/.config/git` | Git configuration, credential helper |
 | `llm-bash-history` | `/commandhistory` | Persistent Bash history |
 | `llm-vscode-extensions` | `/home/node/.vscode-server/extensions` | VS Code extensions installed in containers |
+| `llm-go-cache` | `/home/node/go` | Go module and build cache (`GOPATH`) |
 
 VS Code sometimes relocates the server/extensions path between versions, VS Code variants, and remote environments. This mount targets the standard stable VS Code Server location; `customizations.vscode.extensions` also provisions the declared baseline extensions. UI-side VS Code extensions remain installed on the WSL/desktop host rather than inside this volume.
 
@@ -88,12 +89,15 @@ The project records the selected submodule commit, not an automatically moving b
 
 - Outbound traffic is **default-deny**. `init-firewall.sh` runs on every start and allows only DNS, loopback, the Docker host network, GitHub's published ranges and the hostnames in `images/allowed-domains.txt`. IPv6 is blocked. Add a hostname to that file and rebuild if a tool needs it.
 - The container needs `--cap-add=NET_ADMIN --cap-add=NET_RAW` and runs with `seccomp-userns.json` (both set in `runArgs`). The profile is Docker's default plus the namespace and mount syscalls that bubblewrap needs, so `delegate.sh` can jail delegates. The cost is a wider kernel attack surface (user namespaces); no capability is added. An invalid profile stops the container starting.
+- If a tool fails with `no route to host` for a domain on the allowlist, after a rebuild or a long session, the address of that host has changed since the firewall started. The firewall resolves each hostname once per run, and hosts such as `proxy.golang.org` change address over hours. Run `sudo /usr/local/bin/init-firewall.sh`, which `node` may run, to resolve the list again.
 - `node` has **no general sudo**: it may only run `init-firewall.sh` and `fix-volume-perms.sh`. To install a system package, add it to the Dockerfile and rebuild.
 - Allowlisted hostnames are resolved to IPs at start; CDN-backed hosts whose IPs rotate may need a container restart.
 
 ## 6. Command-line tools
 
 `rg` (ripgrep), `fd`, `bat`, `fzf`, `tree`, `jq`; in interactive Bash sessions `grep`, `find`, and `cat` are aliased respectively to `rg`, `fd`, and `bat --paging=never`. These programs have different CLI flags and behavior, so use `command grep`, `command find`, `command cat` to invoke originals. Shell scripts do not load the aliases by default.
+
+Go development tools: the Go toolchain (version set by the `GO_VERSION` build arg), `staticcheck`, and `socat` for pty pairs that stand in for serial ports. Modules download through `proxy.golang.org`, which is on the firewall allowlist. Playwright with Chromium is installed for driving web UIs; the browser is baked in at build time under `/opt/ms-playwright`, so it needs no firewall entry.
 
 ## 7. Engineering workflow
 
@@ -184,12 +188,13 @@ Agents write every file under the workspace and never to `/tmp`. `.scratch/` is 
 
 ### Models and delegation
 
-`/delegate` runs a bounded task on another model through its CLI, headless. Six roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
+`/delegate` runs a bounded task on another model through its CLI, headless. Eight roles in `images/delegate-roles.conf` (installed as `/etc/delegate-roles.conf`) map to a CLI, a model and a mode. The brief carries the task, so one role covers several jobs, and `--model` overrides the model for a run. Add a role with one line.
 
 | Role | Model | Mode | Use for |
 | --- | --- | --- | --- |
 | `decide` | Claude Opus | read | a hard choice, a design sketch, a blast-radius or security read |
-| `implement` | Claude Sonnet | write | tickets, tests, bug repro loops; mechanical edits with `--model claude-haiku-5-5` |
+| `implement-codex` | Codex | write | tickets with a runnable check, tests, bug repro loops; try this first |
+| `implement` | Claude Sonnet | write | tickets that need judgment; mechanical edits with `--model claude-haiku-5-5` |
 | `search` | Claude Haiku | read | reading many files, logs or diffs |
 | `review` | Codex | read | second opinion on a diff |
 | `docs` | Codex | write | docs, PR text, changelog entries |

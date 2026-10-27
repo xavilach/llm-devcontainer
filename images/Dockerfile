@@ -104,25 +104,58 @@ RUN printf '%s\n' \
     'fi' \
     "PROMPT_COMMAND='history -a'" >> /home/node/.bashrc
 
+# 16 — socat: creates pty pairs, so serial code can be tested on Linux without hardware.
+RUN apt-get update && apt-get install -y --no-install-recommends socat \
+    && rm -rf /var/lib/apt/lists/*
+
+# 17 — Go toolchain from go.dev (official tarball for the build architecture).
+# GOPATH is /home/node/go, a named volume, so the module cache survives rebuilds.
+ARG GO_VERSION=1.27.3
+RUN arch="$(dpkg --print-architecture)" \
+    && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${arch}.tar.gz" | tar -C /usr/local -xz
+ENV GOROOT=/usr/local/go \
+    GOPATH=/home/node/go \
+    PATH=/usr/local/go/bin:/home/node/go/bin:${PATH}
+
+# 18 — staticcheck: Go static analysis, installed into /usr/local/bin.
+# A throwaway GOPATH keeps the root-owned module cache out of the image.
+ARG STATICCHECK_VERSION=latest
+RUN GOPATH=/tmp/gobuild GOBIN=/usr/local/bin go install honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION} \
+    && rm -rf /tmp/gobuild
+
+# 19 — Playwright with Chromium, for driving the UI in verify. Browsers live in /opt/ms-playwright
+# and their system libraries are installed by --with-deps. The download happens at build time,
+# so no firewall entry is needed at runtime.
+ARG PLAYWRIGHT_VERSION=latest
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --global playwright@${PLAYWRIGHT_VERSION} \
+    && playwright install --with-deps chromium \
+    && chmod -R a+rX /opt/ms-playwright \
+    && rm -rf /var/lib/apt/lists/*
+
+# 20 — Go cache directory for the named volume mounted at /home/node/go.
+RUN mkdir -p /home/node/go && chown node:node /home/node/go
+
 # CLI versions: override via "build.args" in devcontainer.json to pin (default: latest).
 # Placed last because they change most often, which keeps earlier layers cached.
 ARG CLAUDE_CODE_VERSION=latest
 ARG CODEX_VERSION=latest
 ARG GEMINI_CLI_VERSION=latest
 
-# 16 — Claude Code CLI (npm download cache kept across builds).
+# 21 — Claude Code CLI (npm download cache kept across builds).
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
-# 17 — OpenAI Codex CLI.
+# 22 — OpenAI Codex CLI.
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global @openai/codex@${CODEX_VERSION}
 
-# 18 — Google Gemini CLI.
+# 23 — Google Gemini CLI.
 RUN --mount=type=cache,target=/root/.npm \
     npm install --global @google/gemini-cli@${GEMINI_CLI_VERSION}
 
-# 19 — Drop privileges and set the working directory.
+# 24 — Drop privileges and set the working directory.
 USER node
 WORKDIR /workspace
 CMD ["sleep", "infinity"]
